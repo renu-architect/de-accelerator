@@ -25,6 +25,18 @@ from de_accelerator.metadata.store.base import TableStore
 from de_accelerator.metadata.validation import validate_pack
 
 StoreFactory = Callable[[BootstrapConfig], TableStore]
+EngineFactory = Callable[[BootstrapConfig, TableStore], Any]
+
+
+def default_engine_factory(cfg: BootstrapConfig, store: TableStore) -> Any:
+    """Build the ingestion engine for a bootstrap config (secrets: Key Vault scope on Databricks, env vars locally)."""
+    import de_accelerator.connectors.builtin  # noqa: F401  (registers connectors)
+    from de_accelerator.core.secrets import DatabricksSecretProvider, EnvSecretProvider
+    from de_accelerator.ingestion.engine import EngineConfig, IngestionEngine
+
+    secrets = EnvSecretProvider(cfg.environment) if cfg.flavor == "LOCAL" else DatabricksSecretProvider(cfg.secret_scope or "")
+    ecfg = EngineConfig(env=cfg.environment, catalog=cfg.catalog, flavor=cfg.flavor)
+    return IngestionEngine(store, store.spark, secrets, ecfg)  # type: ignore[attr-defined]
 
 
 def default_store_factory(cfg: BootstrapConfig) -> TableStore:
@@ -89,6 +101,31 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--object", action="append", default=[], dest="objects")
     s.add_argument("--execution")
 
+    ig = sub.add_parser("ingest", help="run source->Bronze ingestion for an execution (or selected objects)")
+    ig.add_argument("--execution")
+    ig.add_argument("--objects", help="comma separated object codes")
+    ig.add_argument("--project")
+    ig.add_argument("--run-id")
+    ig.add_argument("--concurrency", type=int)
+    ig.add_argument("--restart", action="store_true", help="resume batches that failed fatally after the cause was fixed")
+
+    bs = sub.add_parser("batch-status", help="show recent batches of an object")
+    bs.add_argument("--object", required=True)
+    bs.add_argument("--stream", default="live")
+    bs.add_argument("--limit", type=int, default=10)
+
+    ab = sub.add_parser("abandon-batch", help="abandon the open batch of an object (never if its Bronze data is committed)")
+    ab.add_argument("--object", required=True)
+    ab.add_argument("--stream", default="live")
+    ab.add_argument("--reason", required=True)
+
+    rp = sub.add_parser("reprocess", help="re-extract an explicit window into Bronze as a separate REPROCESS stream (live cursor untouched)")
+    rp.add_argument("--object", required=True)
+    rp.add_argument("--project", required=True)
+    rp.add_argument("--from", dest="frm", required=True)
+    rp.add_argument("--to", required=True)
+    rp.add_argument("--reason", required=True)
+
     d = sub.add_parser("diff", help="row-level diff between two releases")
     d.add_argument("--from", dest="frm", default="none")
     d.add_argument("--to", required=True)
@@ -99,14 +136,27 @@ def _emit(args: argparse.Namespace, text: str, data: Any, out: Callable[[str], N
     out(json.dumps(data, indent=2, sort_keys=True, default=str) if args.json else text)
 
 
-def _envs(env: str) -> list[str]:
-    return list(ENVIRONMENTS) if env == "all" else [env]
+def _envs(env: str, pack: str | None = None) -> list[str]:
+    """`all` = the environments the pack declares in pack.yaml (falls back to DEV/QA/PROD if it cannot be read)."""
+    if env != "all":
+        return [env]
+    if pack:
+        try:
+            import yaml
+
+            declared = yaml.safe_load((Path(pack) / "pack.yaml").read_text(encoding="utf-8")).get("environments")
+            if declared:
+                return [e for e in ENVIRONMENTS if e in declared]
+        except Exception:  # noqa: BLE001 - unreadable manifest is reported by the validator itself
+            pass
+    return list(ENVIRONMENTS)
 
 
-def run(argv: Sequence[str] | None = None, store_factory: StoreFactory | None = None, out: Callable[[str], None] = print) -> int:
+def run(argv: Sequence[str] | None = None, store_factory: StoreFactory | None = None, out: Callable[[str], None] = print,
+        engine_factory: EngineFactory | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        return _dispatch(args, store_factory or default_store_factory, out)
+        return _dispatch(args, store_factory or default_store_factory, out, engine_factory or default_engine_factory)
     except ValidationFailedError as exc:
         out(f"ERROR {exc} codes={exc.context.get('codes')}")
         return 1
@@ -121,10 +171,10 @@ def run(argv: Sequence[str] | None = None, store_factory: StoreFactory | None = 
         return 3
 
 
-def _dispatch(args: argparse.Namespace, factory: StoreFactory, out: Callable[[str], None]) -> int:
+def _dispatch(args: argparse.Namespace, factory: StoreFactory, out: Callable[[str], None], engine_factory: EngineFactory) -> int:
     if args.cmd == "validate-config":
         ok, results = True, []
-        for env in _envs(args.env):
+        for env in _envs(args.env, args.pack):
             report, _ = validate_pack(args.pack, env, core_version=args.core_version, deployed_schema_version=args.deployed_schema)
             ok &= report.ok
             results.append(report)
@@ -138,7 +188,7 @@ def _dispatch(args: argparse.Namespace, factory: StoreFactory, out: Callable[[st
         outdir = Path(args.out)
         outdir.mkdir(parents=True, exist_ok=True)
         ok, built = True, {}
-        for env in _envs(args.env):
+        for env in _envs(args.env, args.pack):
             report, bundle = validate_pack(args.pack, env)
             if not report.ok or bundle is None:
                 ok = False
@@ -217,12 +267,58 @@ def _dispatch(args: argparse.Namespace, factory: StoreFactory, out: Callable[[st
         ref = SnapshotStore(store).persist(snap, args.actor)
         _emit(args, f"snapshot {ref.snapshot_id} release={ref.release_id}", {"snapshot_id": ref.snapshot_id, "release_id": ref.release_id}, out)
         return 0
+    if args.cmd in ("ingest", "batch-status", "abandon-batch", "reprocess"):
+        return _ingestion_commands(args, cfg, store, env, engine_factory, out)
     if args.cmd == "diff":
         changes = ChangeDiffer(store).diff(None if args.frm == "none" else args.frm, args.to)
         rows = [{"table": c.table, "key": c.key, "change": c.change_type} for c in changes]
         _emit(args, "\n".join(f"{c['change']:<8} {c['table']} {c['key']}" for c in rows) or "(no changes)", rows, out)
         return 0
     raise ConfigError(f"unknown command {args.cmd}")
+
+
+def _ingestion_commands(args: argparse.Namespace, cfg: BootstrapConfig, store: TableStore, env: str, engine_factory: EngineFactory,
+                        out: Callable[[str], None]) -> int:
+    from de_accelerator.ingestion.runner import IngestionRunner
+
+    engine = engine_factory(cfg, store)
+    if args.cmd == "ingest":
+        objs = tuple(o for o in (args.objects or "").split(",") if o)
+        s = IngestionRunner(engine, store, env).run(args.execution, objs, args.project, args.run_id, args.restart, "cli", args.concurrency)
+        data = {"run_id": s.run_id, "status": s.status, "snapshot_id": s.snapshot.snapshot_id, "release_id": s.snapshot.release_id,
+                "objects": [{"object": r.object_code, "status": r.status, "batch_seq": r.batch_seq, "rows_written": r.rows_written,
+                             "attempts": r.attempts, "error": r.message if r.status == "FAILED" else None} for r in s.results]}  # fmt: skip
+        lines = [f"run {s.run_id}: {s.status}  snapshot={s.snapshot.snapshot_id[:12]} release={s.snapshot.release_id[:8]}"]
+        lines += [f"  {r.object_code:<28} {r.status:<8} batch={r.batch_seq} rows={r.rows_written} attempts={r.attempts}"
+                  + (f"  [{r.error_class}] {r.message}" if r.status == "FAILED" else "") for r in s.results]  # fmt: skip
+        _emit(args, "\n".join(lines), data, out)
+        return 1 if s.status in ("FAILED", "PARTIAL") else 0
+    if args.cmd == "batch-status":
+        rows = []
+        for m in engine.manifests.list(args.object, args.stream)[-args.limit:]:
+            rc = engine.receipts.get(m.batch_id)
+            rows.append({"seq": m.batch_seq, "state": engine.events.state(m.batch_id), "wm_from": m.wm_from, "wm_to": m.wm_to,
+                         "rows": rc["rows_written"] if rc else None, "type": m.batch_type, "batch_id": m.batch_id})  # fmt: skip
+        wm = engine.watermarks.get(args.object, args.stream)
+        head = f"{args.object}/{args.stream}: cursor={wm.committed_value if wm else None} seq={wm.committed_seq if wm else 0}"
+        _emit(args, head + "\n" + "\n".join(f"  #{r['seq']:<4} {r['state']:<18} {r['wm_from']} -> {r['wm_to']} rows={r['rows']}" for r in rows),
+              {"cursor": wm.committed_value if wm else None, "batches": rows}, out)  # fmt: skip
+        return 0
+    if args.cmd == "abandon-batch":
+        bid = engine.abandon_batch(args.object, args.stream, args.reason, args.actor)
+        out(f"abandoned batch {bid}")
+        return 0
+    # reprocess
+    from de_accelerator.audit.models import batch_id_for  # noqa: F401
+
+    ref, reader = IngestionRunner(engine, store, env).snapshot_for(None, (args.project,), (args.object,))
+    n = 1
+    while engine.manifests.list(args.object, f"reprocess-{n}"):
+        n += 1
+    res = engine.ingest_object(reader, ref, args.project, args.object, args.run_id if hasattr(args, "run_id") and args.run_id else f"reprocess-{args.actor}",
+                               stream_key=f"reprocess-{n}", batch_type="REPROCESS", window_override=(args.frm, args.to))  # fmt: skip
+    out(f"reprocess {args.object} [{args.frm} .. {args.to}] ({args.reason}): {res.status} batch={res.batch_seq} rows={res.rows_written}")
+    return 1 if res.status == "FAILED" else 0
 
 
 def main() -> None:  # pragma: no cover - console entry point

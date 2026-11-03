@@ -10,7 +10,7 @@ from packaging.version import InvalidVersion, Version
 from de_accelerator import __version__
 
 #: Version of the metadata schema produced by migrations in this release. Independent of framework SemVer.
-METADATA_SCHEMA_VERSION = 1
+METADATA_SCHEMA_VERSION = 2
 #: Pack file-format versions this framework can read.
 SUPPORTED_PACK_FORMATS: frozenset[int] = frozenset({1})
 

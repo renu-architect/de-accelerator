@@ -1,0 +1,5 @@
+# One entry per table. Add more tables by adding more items (or generate them with `de-accel discover`, planned).
+kind: object
+items:
+  - {code: orders, source: erp_sql, schema_name: dbo, object_name: Orders, business_keys: [OrderID], primary_keys: [OrderID],
+     enabled_layers: [BRONZE], target_bronze: bronze.erp_orders}

@@ -1,0 +1,11 @@
+kind: execution
+items:
+- code: daily_orders
+  scope:
+    objects:
+    - orders
+  schedule_cron: 0 0 * * * ?
+  schedule_timezone: UTC
+  concurrency: 4
+  retry_policy: standard
+  timeout_min: 60

@@ -89,8 +89,12 @@ CASES: dict[str, tuple] = {
     "MDV-4007": (mut(OBJ, lambda it: item(it, code="customers").update(sensitivity="public")), {}),
     "MDV-4008": (mut(COL, lambda it: item(it, name="Amount").update(is_pii=True, classification="confidential")), {}),
     "MDV-4009": (mut(ENV, lambda it: item(it, code="PROD").pop("secret_scope")), {"env": "PROD"}),
+    "MDV-6001": (mut(SRC, lambda it: it[0].update(connector_type="rest")), {}),
+    "MDV-6002": (mut(LM, lambda it: item(it, object="orders", layer="SILVER").update(target_table="gold.orders")), {}),
+    "MDV-6003": (mut(COL, lambda it: it.append({"object": "orders", "name": "_hidden", "ordinal": 9})), {}),
+    "MDV-6010": (mut(SRC, lambda it: it[0]["connection"].pop("password")), {}),
     "MDV-5001": (lambda root: None, {"core_version": "2.0.0"}),
-    "MDV-5002": (manifest(metadata_schema_version=2), {}),
+    "MDV-5002": (manifest(metadata_schema_version=3), {}),
     "MDV-5003": (manifest(pack_version="v1"), {}),
     "MDV-5004": (manifest(pack_format=2), {}),
     "MDV-5005": (lambda root: None, {"deprecated_keys": {"object.priority": "use 'tags.priority'"}}),
@@ -112,7 +116,7 @@ def test_clean_example_has_no_findings():
 
 def test_every_rule_has_a_negative_test():
     assert {r.code for r in RULES} == set(CASES), "rule catalogue and CASES are out of sync"
-    assert len(RULES) >= 60
+    assert len(RULES) >= 64
     assert len({r.code for r in RULES}) == len(RULES)
     assert all(r.layer in {"REFERENTIAL", "SEMANTIC", "POLICY", "COMPAT"} for r in RULES)
 
@@ -180,3 +184,17 @@ def test_report_formats(tmp_path):
 def test_engine_rejects_duplicate_rule_codes():
     with pytest.raises(ValueError):
         vengine.rule("MDV-3001", "ERROR", "SEMANTIC", "dup")(lambda ctx: iter(()))
+
+
+def test_connector_specific_checks_cover_options_and_watermark_types(tmp_path):
+    root = copy_pack(tmp_path)
+    edit_items(root, SRC, lambda it: it[0]["options"].update(bogus_option=1))
+    edit_items(root, LS, lambda it: item(it, object="orders").update(watermark_type="uuid", read_options={"nope": 1}))
+    msgs = " | ".join(f.message for f in run(root).findings if f.code == "MDV-6010")
+    assert "bogus_option" in msgs and "watermark_type 'uuid'" in msgs and "read_options key 'nope'" in msgs
+
+
+def test_hostile_identifiers_are_rejected_in_metadata(tmp_path):
+    root = copy_pack(tmp_path)
+    edit_items(root, OBJ, lambda it: item(it, code="orders").update(object_name="Orders; DROP TABLE x--"))
+    assert any("unsafe or invalid SQL identifier" in f.message for f in run(root).findings if f.code == "MDV-6010")

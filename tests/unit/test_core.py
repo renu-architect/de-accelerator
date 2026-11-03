@@ -74,3 +74,14 @@ def test_bootstrap(tmp_path):
         load_bootstrap(tmp_path / "bad.yaml")
     with pytest.raises(BootstrapConfigError):
         load_bootstrap(tmp_path / "missing.yaml")
+
+
+def test_wire_loggers_are_silenced():
+    import logging
+
+    from de_accelerator.core.logging import quiet_wire_loggers
+
+    logging.getLogger("py4j.clientserver").setLevel(logging.DEBUG)
+    quiet_wire_loggers()
+    assert not logging.getLogger("py4j.clientserver").isEnabledFor(logging.DEBUG)
+    assert not logging.getLogger("py4j").isEnabledFor(logging.INFO)

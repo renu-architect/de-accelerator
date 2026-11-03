@@ -6,10 +6,11 @@ from __future__ import annotations
 import copy
 import threading
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Any
 
 from de_accelerator.core.errors import StoreError
-from de_accelerator.metadata.schema.tablespec import TableSpec
+from de_accelerator.metadata.schema.tablespec import Col, TableSpec
 from de_accelerator.metadata.store.base import Row
 
 
@@ -34,6 +35,17 @@ class InMemoryTableStore:
 
     def table_exists(self, name: str) -> bool:
         return name in self._specs
+
+    def add_columns(self, table: str, cols: Sequence[Col]) -> None:
+        with self._lock:
+            spec = self._spec(table)
+            new = [c for c in cols if c.name not in spec.column_names]
+            if not new:
+                return
+            self._specs[table] = replace(spec, columns=spec.columns + tuple(new))
+            for r in self._data[table]:
+                for c in new:
+                    r[c.name] = None
 
     # --- helpers
     def _spec(self, table: str) -> TableSpec:

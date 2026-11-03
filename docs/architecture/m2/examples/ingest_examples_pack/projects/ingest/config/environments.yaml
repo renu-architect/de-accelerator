@@ -1,0 +1,5 @@
+kind: environment
+items:
+  - {code: DEV,  catalog_name: acme_dev,  secret_scope: kv-acme-dev,  storage_root: "abfss://delta@acmedev.dfs.core.windows.net/"}
+  - {code: QA,   catalog_name: acme_qa,   secret_scope: kv-acme-qa,   storage_root: "abfss://delta@acmeqa.dfs.core.windows.net/"}
+  - {code: PROD, catalog_name: acme_prod, secret_scope: kv-acme-prod, storage_root: "abfss://delta@acmeprod.dfs.core.windows.net/"}

@@ -5,6 +5,7 @@ Flavors: LOCAL (two-level names, for local Spark/Delta tests) and DATABRICKS (ca
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -85,6 +86,14 @@ def render_pk_constraint(spec: TableSpec, catalog: str | None = None, flavor: st
     cat = catalog
     return (f"ALTER TABLE {qualified_table(spec.schema, spec.name, cat)} ADD CONSTRAINT pk_{spec.name} "
             f"PRIMARY KEY ({', '.join('`' + k + '`' for k in spec.pk)})")  # fmt: skip
+
+
+def render_add_columns(
+    schema: str, table: str, cols: Sequence[Col], catalog: str | None = None, flavor: str = "DATABRICKS"
+) -> str:
+    cat = catalog if flavor == "DATABRICKS" else None
+    body = ", ".join(f"`{c.name}` {SQL_TYPES[c.type]}" + (f" COMMENT '{_esc(c.comment)}'" if c.comment else "") for c in cols)
+    return f"ALTER TABLE {qualified_table(schema, table, cat)} ADD COLUMNS ({body})"
 
 
 def render_drop(spec: TableSpec, catalog: str | None = None, flavor: str = "DATABRICKS") -> str:

@@ -1,0 +1,13 @@
+kind: load_strategy
+items:
+  # Incremental on ModifiedDate: re-reads the last hour (late commits), holds the upper bound back 5 minutes (in-flight transactions),
+  # reads 8 parallel partitions on OrderID. First run loads everything; later runs load only what changed.
+  - object: orders
+    load_type: INCREMENTAL
+    watermark_column: ModifiedDate
+    watermark_type: timestamp
+    lookback_window: PT1H
+    late_arrival_window: PT5M
+    partition_column: OrderID
+    num_partitions: 8
+    schema_evolution_mode: ADD_COLUMNS

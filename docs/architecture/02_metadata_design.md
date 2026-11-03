@@ -1,5 +1,7 @@
 # 02 — Metadata Design (Deliverables 5–6)
 
+> **Catalog layout:** implemented = `<client>_<env>` with schemas `meta, audit, dq, recon, gov, bronze, silver, gold`; planned (future) = add `docs` for document runtime tables.
+
 > **Rev 1 banner:** The "Versioning" paragraph below (in-place SCD2 on `cfg_*`) is **superseded by ADR-0007 / doc 09**: `cfg_*` rows are insert-only and tagged with `pack_release_id`; "current" = active release via `cfg_active_release` + `v_cfg_*` views; `effective_from/to` derive from release activation. See §Rev1 addendum at the end of this file for added tables.
 
 Catalog `<client>_<env>`, schema `meta`. Naming: `cfg_*` = static configuration (versioned); `run_*`/`wm_*` = runtime state; `*_hist` = history.
@@ -136,7 +138,8 @@ Silver adds `_valid_from,_valid_to,_is_current,_is_deleted,_silver_ts,_dq_status
 | `wm_layer_cursor` | audit | per-layer applied cursor (doc 08) | ingestion | DDL only |
 | `cfg_retention_policy`, `cfg_subject_key_map`, `cfg_external_consumer` | meta | retention & erasure mapping (doc 11) | security/gov | DDL + validator rules |
 | `gov_erasure_request/task/evidence`, `gov_suppression_list`, `gov_retention_run` | gov | erasure & retention execution evidence | security/gov | DDL only |
-| `cfg_doc_pipeline`, `doc_registry`, `doc_page`, `doc_extraction`, `doc_classification` | meta/docs | document path (doc 10 §4) | document_processing | DDL only |
+| `cfg_doc_pipeline` | meta | document pipeline configuration (doc 10 §4) | document_processing | implemented as config entity in M1 |
+| `doc_registry`, `doc_page`, `doc_extraction`, `doc_classification` | `docs` (**planned schema — future**, ADR-0018 #6) | document runtime state in Delta; originals in ADLS Gen2 | document_processing | **future; not implemented** |
 | `cfg_orchestration_provider` | meta | provider selection/options | orchestration | DDL + validator |
 | `cfg_semantic_*` additions: `cfg_semantic_target` (SQL_VIEW / METRIC_VIEW / TMDL) | meta | semantic outputs | semantic | DDL + validator |
 Notes: env overrides are resolved by the loader (no `cfg_*_override` tables). `cfg_config_history` is derived from release diffs.

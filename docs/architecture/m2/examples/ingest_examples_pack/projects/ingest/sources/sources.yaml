@@ -1,0 +1,34 @@
+kind: source
+items:
+  # 1) SQL Server over JDBC, user/password from Key Vault references (never literals)
+  - code: erp_sql
+    source_type: sqlserver
+    connector_type: jdbc
+    auth_mode: SECRET
+    connection: {host: "kv:erp-host", port: "1433", database: "kv:erp-db", user: "kv:erp-user", password: "kv:erp-pwd"}
+    options: {fetchsize: 10000, max_connections: 4, encrypt: true}
+  # 2) Azure SQL using a Unity Catalog service credential backed by a managed identity (no password anywhere)
+  - code: crm_azsql
+    source_type: azuresql
+    connector_type: jdbc
+    auth_mode: MANAGED_IDENTITY
+    connection: {host: "kv:crm-host", database: "kv:crm-db", service_credential: "kv:crm-svc-cred-name"}
+    options: {fetchsize: 10000, max_connections: 4}
+  # 3) PostgreSQL
+  - code: web_pg
+    source_type: postgresql
+    connector_type: jdbc
+    auth_mode: SECRET
+    connection: {host: "kv:web-host", port: "5432", database: "kv:web-db", user: "kv:web-user", password: "kv:web-pwd"}
+    options: {fetchsize: 20000, max_connections: 2}
+  # 4-6) File sources in ADLS Gen2 (access via Unity Catalog external location / managed identity: no keys)
+  - {code: land_csv,     source_type: csv,     connector_type: file, auth_mode: MANAGED_IDENTITY, connection: {root: "abfss://landing@acmedev.dfs.core.windows.net/csv"}}
+  - {code: land_json,    source_type: json,    connector_type: file, auth_mode: MANAGED_IDENTITY, connection: {root: "abfss://landing@acmedev.dfs.core.windows.net/json"}}
+  - {code: land_parquet, source_type: parquet, connector_type: file, auth_mode: MANAGED_IDENTITY, connection: {root: "abfss://landing@acmedev.dfs.core.windows.net/parquet"}}
+  # 7) REST API with OAuth2 client credentials from Key Vault
+  - code: shop_api
+    source_type: rest
+    connector_type: rest
+    auth_mode: SERVICE_PRINCIPAL
+    connection: {base_url: "kv:shop-api-url", token_url: "kv:shop-token-url", client_id: "kv:shop-client-id", client_secret: "kv:shop-client-secret"}
+    options: {timeout_sec: 30, max_requests_per_sec: 5}

@@ -1,0 +1,6 @@
+kind: layer_mapping
+items:
+- object: orders
+  layer: BRONZE
+  target_table: bronze.erp_orders
+  merge_type: APPEND

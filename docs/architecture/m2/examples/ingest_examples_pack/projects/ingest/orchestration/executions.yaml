@@ -1,0 +1,9 @@
+kind: execution
+items:
+  - code: ingest_all
+    scope: {objects: [orders, customers, sessions, products_csv, events_json, prices_parquet, shop_orders]}
+    schedule_cron: "0 0 * * * ?"
+    schedule_timezone: UTC
+    concurrency: 4
+    retry_policy: standard
+    timeout_min: 180

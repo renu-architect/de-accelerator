@@ -323,3 +323,12 @@ def test_crash_sweep_rollback():
             ReleaseManager(s, ENV).rollback(reason="test")
         ptr, st = _assert_consistent(s, a_id)
         assert ptr["release_id"] == a_id and st[b_id] == ROLLED_BACK and st[a_id] == ACTIVE and ptr["activation_seq"] == 3
+
+
+def test_loader_requires_migrated_schema_v2():
+    """Code writes schema v2 columns; staging against a v1 database must say 'run migrate', not crash on a missing column."""
+    s = InMemoryTableStore()
+    Migrator(s, MIGRATIONS).apply(target=1)
+    with pytest.raises(CompatibilityError, match="migrate"):
+        PackLoader(s, ENV).stage(make_bundle())
+    assert s.count("cfg_pack_release") == 0

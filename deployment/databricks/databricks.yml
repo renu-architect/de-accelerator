@@ -1,0 +1,51 @@
+# Databricks Asset Bundle — first working ingestion pipeline (SQL Server -> Bronze).
+# STATUS: template, NOT yet executed on a real workspace (DATABRICKS_INTEGRATION_PENDING).
+# Usage:  databricks bundle validate -t dev  &&  databricks bundle deploy -t dev  &&  databricks bundle run ingest_daily_orders -t dev
+bundle:
+  name: de-accelerator-ingestion
+
+variables:
+  client:        {description: "client code (lower case), e.g. acme"}
+  environment:   {description: "DEV | QA | PROD"}
+  execution:     {description: "execution code from metadata", default: daily_orders}
+  bootstrap_path: {description: "workspace path of the bootstrap YAML", default: /Workspace/de-accelerator/bootstrap/dev.yaml}
+  node_type:     {default: Standard_DS3_v2}
+  spark_version: {description: "a supported Databricks LTS runtime (see config/runtime_matrix.yaml)", default: 15.4.x-scala2.12}
+  service_principal: {description: "application id of the job's run_as service principal"}
+
+artifacts:
+  de_accelerator_wheel:
+    type: whl
+    build: python -m build --wheel
+    path: ../..
+
+resources:
+  jobs:
+    ingest_daily_orders:
+      name: ${var.client}-${var.environment}-ingest-${var.execution}
+      max_concurrent_runs: 1                     # never two overlapping runs of the same execution
+      tags: {client: ${var.client}, env: ${var.environment}, pipeline: ${var.execution}}   # cost tracking
+      schedule: {quartz_cron_expression: "0 0 * * * ?", timezone_id: UTC, pause_status: PAUSED}
+      run_as: {service_principal_name: ${var.service_principal}}
+      job_clusters:
+        - job_cluster_key: ingest
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            autoscale: {min_workers: 1, max_workers: 4}
+            spark_conf:
+              "spark.databricks.delta.schema.autoMerge.enabled": "false"   # schema changes are governed by metadata, not by accident
+              "spark.sql.redaction.options.regex": "(?i)url|password|user|token|accesstoken|secret"   # never print JDBC credentials
+      tasks:
+        - task_key: ingest
+          job_cluster_key: ingest
+          max_retries: 0                         # retries are owned by the framework (they resume the open batch, never restart blindly)
+          libraries: [{whl: ../../dist/*.whl}]
+          python_wheel_task:
+            package_name: de_accelerator
+            entry_point: de-accel
+            parameters: ["--bootstrap", "${var.bootstrap_path}", "ingest", "--execution", "${var.execution}", "--run-id", "{{job.run_id}}"]
+
+targets:
+  dev:  {mode: development, default: true}
+  prod: {mode: production}

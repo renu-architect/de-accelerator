@@ -1,0 +1,4 @@
+kind: column
+items:
+  - {object: customers, name: CustomerID, ordinal: 1, is_pk: true, is_bk: true, is_nullable: false}
+  - {object: customers, name: Email, ordinal: 2, is_pii: true, classification: confidential, mask_policy: email_mask}

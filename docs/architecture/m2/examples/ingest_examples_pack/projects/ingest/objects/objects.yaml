@@ -1,0 +1,9 @@
+kind: object
+items:
+  - {code: orders,        source: erp_sql,   schema_name: dbo,    object_name: Orders,      business_keys: [OrderID],    enabled_layers: [BRONZE], target_bronze: bronze.erp_orders}
+  - {code: customers,     source: crm_azsql, schema_name: dbo,    object_name: Customers,   business_keys: [CustomerID], enabled_layers: [BRONZE], target_bronze: bronze.crm_customers, personal_data: true, sensitivity: confidential}
+  - {code: sessions,      source: web_pg,    schema_name: public, object_name: web_sessions, business_keys: [session_id], enabled_layers: [BRONZE], target_bronze: bronze.web_sessions}
+  - {code: products_csv,  source: land_csv,  object_name: products,   object_kind: file, business_keys: [sku],        enabled_layers: [BRONZE], target_bronze: bronze.csv_products}
+  - {code: events_json,   source: land_json, object_name: events,     object_kind: file, business_keys: [event_id],   enabled_layers: [BRONZE], target_bronze: bronze.json_events}
+  - {code: prices_parquet, source: land_parquet, object_name: prices, object_kind: file, business_keys: [sku],        enabled_layers: [BRONZE], target_bronze: bronze.parquet_prices}
+  - {code: shop_orders,   source: shop_api,  object_name: orders,     object_kind: api,  business_keys: [id],         enabled_layers: [BRONZE], target_bronze: bronze.shop_orders}

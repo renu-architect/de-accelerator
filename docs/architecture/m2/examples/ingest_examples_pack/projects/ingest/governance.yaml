@@ -1,0 +1,2 @@
+kind: subject_key
+items: [{object: customers, column_name: CustomerID, subject_role: customer_id}]

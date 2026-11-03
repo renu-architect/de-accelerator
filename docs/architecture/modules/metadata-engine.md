@@ -6,6 +6,15 @@ Status: see `docs/status/IMPLEMENTATION_STATUS.md` (implemented; **LOCAL_VERIFIE
 ## 1. Responsibilities
 Define the metadata schema (DDL + migrations), turn Git YAML packs into validated, hash-identified per-environment bundles, load them into Delta as immutable releases, manage the active-release pointer (activate / rollback / healing), keep an audit history, build immutable per-run configuration snapshots, and serve typed read access. It does **not** execute pipelines.
 
+## 1a. What is implemented vs schema-only vs future
+| Category | Items |
+|---|---|
+| **Implemented + LOCAL_VERIFIED** | core; table specs/store/migrations; YAML packs; 60-rule validator; loader/release manager/history; snapshots; readers; read-only service; CLI |
+| **Schema-only (`DDL_ONLY`, 22 tables)** | audit (14), dq (1), recon (2), gov (5) — DDL only, no logic |
+| **Planned / future (not implemented)** | `docs` schema + 4 `docs.*` tables (document milestone); see ADR-0018 |
+| **Future** | ingestion/batch protocol (M2), medallion (M3), DQ/recon engines (M4), semantic (M5), document processing (V1/V2), Databricks integration, Terraform/IaC |
+Catalog schemas implemented today: meta, audit, dq, recon, gov, bronze, silver, gold (8). A `docs` schema is planned for the document milestone.
+
 ## 2. Components and interfaces
 | Package | Key types | Notes |
 |---|---|---|

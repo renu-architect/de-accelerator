@@ -1,0 +1,61 @@
+kind: load_strategy
+items:
+  # INCREMENTAL on a timestamp with 2h re-read overlap and 5 min safety lag against in-flight commits
+  - object: orders
+    load_type: INCREMENTAL
+    watermark_column: ModifiedDate
+    watermark_type: timestamp
+    lookback_window: PT2H
+    late_arrival_window: PT5M
+    partition_column: OrderID
+    num_partitions: 8
+    schema_evolution_mode: ADD_COLUMNS
+    # --- proposed by M2 (CR-M2-01, additive): connector-specific read options ---
+    read_options: {}
+  # FULL load, complete extract
+  - {object: customers, load_type: FULL, is_complete_extract: true, schema_evolution_mode: ADD_COLUMNS}
+  # CDC from a change-feed table (op + sequence columns); deletes arrive as op 'D'
+  - object: sessions
+    load_type: CDC
+    cdc_op_column: op_code
+    cdc_seq_column: change_seq
+    max_replay_age: P7D
+    on_retention_gap: FULL_RESYNC
+    cdc_retention_check: true
+    # --- proposed by M2: map source op codes to I/U/D ---
+    cdc_op_map: {I: [insert, c], U: [update, u], D: [delete, d]}
+    read_options: {change_table: public.web_sessions_changes}
+  # FILE_INCR: new/changed CSV files since last batch
+  - object: products_csv
+    load_type: FILE_INCR
+    lookback_window: PT1H
+    schema_evolution_mode: ADD_COLUMNS
+    read_options:
+      path: products/
+      glob: "*.csv"
+      format: csv
+      format_options: {header: true, delimiter: ",", encoding: UTF-8, multiLine: false}
+      max_files_per_batch: 500
+      max_corrupt_pct: 0.1
+  - object: events_json
+    load_type: FILE_INCR
+    schema_evolution_mode: RESCUE
+    read_options: {path: events/, glob: "*.json", format: json, format_options: {multiLine: false}, max_files_per_batch: 1000}
+  # SNAPSHOT of parquet files: every run lands a full copy
+  - object: prices_parquet
+    load_type: SNAPSHOT
+    is_complete_extract: true
+    read_options: {path: prices/, glob: "*.parquet", format: parquet}
+  # API with cursor pagination and an incremental 'since' parameter
+  - object: shop_orders
+    load_type: API
+    watermark_column: updated_at
+    watermark_type: timestamp
+    lookback_window: PT1H
+    page_config: {pagination: cursor, page_size: 200, cursor_param: cursor, next_cursor_path: "$.meta.next", max_pages: 5000}
+    read_options:
+      endpoint: /v2/orders
+      method: GET
+      records_path: "$.data"
+      incremental_param: updated_since
+      incremental_format: iso8601

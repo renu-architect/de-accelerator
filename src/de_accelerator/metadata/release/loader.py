@@ -10,7 +10,7 @@ from collections.abc import Callable
 from typing import Any
 
 from de_accelerator.core import versioning
-from de_accelerator.core.errors import PackError, ReleaseError, ValidationFailedError
+from de_accelerator.core.errors import CompatibilityError, PackError, ReleaseError, ValidationFailedError
 from de_accelerator.core.logging import get_logger
 from de_accelerator.metadata.packs.bundle import PackBundle
 from de_accelerator.metadata.release.common import ACTIVE, FAILED, STAGED, STAGING, release_id_for, to_table_row
@@ -53,6 +53,12 @@ class PackLoader:
             raise ValidationFailedError(f"bundle failed validation ({len(report.errors)} errors); nothing was loaded",
                                         codes=sorted({f.code for f in report.errors}))  # fmt: skip
 
+        deployed = self.releases._deployed()
+        if deployed < versioning.METADATA_SCHEMA_VERSION:
+            raise CompatibilityError(
+                f"metadata schema is v{deployed} but this framework writes v{versioning.METADATA_SCHEMA_VERSION}: "
+                "run `de-accel migrate` first"
+            )
         rid = release_id_for(self.env, bundle.bundle_sha256)
         existing = self.store.select(RELEASES, {"release_id": rid})
         if existing and existing[0]["status"] in (STAGED, ACTIVE, "SUPERSEDED", "ROLLED_BACK"):

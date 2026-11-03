@@ -25,6 +25,8 @@ class Rule:
 
 
 RULES: list[Rule] = []
+#: connector-specific static validation, registered by connectors (source_type -> fn(source_model, [(obj, columns, strategy)]) -> findings)
+CONNECTOR_VALIDATORS: dict[str, Callable[[Any, list[tuple[Any, Any, Any]]], list[Finding]]] = {}
 
 
 def rule(code: str, severity: str, layer: str, title: str) -> Callable[[RuleFn], RuleFn]:
@@ -99,7 +101,12 @@ class ValidationReport:
 
 
 def run_rules(ctx: ValidationContext) -> list[Finding]:
-    from de_accelerator.metadata.validation import rules_compat, rules_policy, rules_referential, rules_semantic  # noqa: F401
+    from de_accelerator.metadata.validation import rules_compat, rules_connectors, rules_policy, rules_referential, rules_semantic  # noqa: F401
+
+    try:  # soft, lazy dependency so built-in connector validators are always registered (connectors never import ingestion)
+        import de_accelerator.connectors.builtin  # noqa: F401
+    except ImportError:  # pragma: no cover
+        pass
 
     overrides: dict[str, str] = ctx.options.get("severity_overrides", {})
     disabled: set[str] = set(ctx.options.get("disabled_rules", []))

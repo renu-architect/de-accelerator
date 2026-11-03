@@ -79,7 +79,7 @@ Deliver a tested library + CLI that (a) defines the full metadata schema as vers
 3. **Availability of a Databricks DEV workspace + SP** for integration tests (otherwise integration evidence deferred).
 4. **Git platform** (Azure DevOps vs GitHub) for CI skeleton; both templates planned, one delivered in M1.
 5. Confirm **change C3 (per-layer cursors)** and **C1 (release-versioned insert-only config)** from doc 07.
-6. Naming: package `de_accelerator`, catalogs `<client>_<env>`, schemas `meta/audit/dq/recon/gov` — confirm.
+6. Naming: package `de_accelerator`, catalogs `<client>_<env>`, implemented schemas `meta/audit/dq/recon/gov/bronze/silver/gold` (a `docs` schema is a planned future capability, ADR-0018).
 7. Confirm evidence rule: M1 modules may be marked COMPLETE for local tests only if Databricks items are explicitly listed as pending.
 
 ## 9. M1 exit criteria

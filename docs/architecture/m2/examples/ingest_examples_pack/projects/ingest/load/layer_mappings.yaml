@@ -1,0 +1,9 @@
+kind: layer_mapping
+items:
+  - {object: orders,         layer: BRONZE, target_table: bronze.erp_orders,      merge_type: APPEND}
+  - {object: customers,      layer: BRONZE, target_table: bronze.crm_customers,   merge_type: APPEND}
+  - {object: sessions,       layer: BRONZE, target_table: bronze.web_sessions,    merge_type: APPEND}
+  - {object: products_csv,   layer: BRONZE, target_table: bronze.csv_products,    merge_type: APPEND}
+  - {object: events_json,    layer: BRONZE, target_table: bronze.json_events,     merge_type: APPEND}
+  - {object: prices_parquet, layer: BRONZE, target_table: bronze.parquet_prices,  merge_type: APPEND}
+  - {object: shop_orders,    layer: BRONZE, target_table: bronze.shop_orders,     merge_type: APPEND}

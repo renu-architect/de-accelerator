@@ -1,0 +1,11 @@
+overrides:
+- kind: source
+  project: demo
+  key:
+    code: erp_sql
+  set:
+    connection:
+      host: kv:erp-host-prod
+      database: kv:erp-db-prod
+    options:
+      max_connections: 8

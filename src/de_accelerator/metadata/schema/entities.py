@@ -130,6 +130,8 @@ ENTITIES: tuple[EntityDef, ...] = (
         # CDC retention / recovery safeguards (behaviour implemented in M2; validated here)
         _b("cdc_retention_check", True), _s("max_replay_age"),
         _s("on_retention_gap", enum=("FAIL", "FULL_RESYNC", "ALERT"), default="FAIL"),
+        # --- schema v2 (CR-M2-01): connector-specific read settings and CDC op-code mapping ---
+        _j("read_options"), _j("cdc_op_map"),
     )),  # fmt: skip
     EntityDef("layer_mapping", "cfg_layer_mapping", ("object", "layer"), (
         _s("object", True, ref="object"), _s("layer", True, enum=LAYERS), _s("target_table"),

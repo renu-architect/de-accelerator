@@ -45,7 +45,7 @@ flowchart LR
         SI[(silver_project)]
         GO[(gold_project)]
         AUD[(audit / dq / recon)]
-        DOC[(docs: raw volume, extracted, embeddings)]
+        DOC[(planned: docs schema in Delta; originals in ADLS Gen2)]
         SEM[(semantic: metric views)]
       end
     end

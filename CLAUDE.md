@@ -8,11 +8,16 @@ Deployed **independently per client** (own Azure subscription/workspace/ADLS/UC/
 NOT a multi-tenant central platform. Client differences = metadata, config, or approved extension interfaces. Never fork or edit core per client.
 
 ## 2. Current phase
-**PHASE 1 — Architecture & design, Revision 1.** Direction approved by the user; Rev 1 (docs 07–12, ADR-0007..0017) awaits FINAL approval and then becomes **Baseline v1.0**. **No implementation code until the user gives final approval of Rev 1 and the M1 plan (doc 12).**
-Status of every module is tracked in `docs/status/IMPLEMENTATION_STATUS.md`. Everything is `DESIGNED` (not implemented) today.
+**M1 (metadata engine) is CLOSED as LOCAL_VERIFIED** (182 tests, 95% coverage, ruff + strict mypy clean, local Delta tests passed). **M2 (source-to-Bronze ingestion) is in DESIGN; no M2 code until the user explicitly approves the design.** Architecture baseline: Rev 1 + ADR-0018. Module status is tracked in `docs/status/IMPLEMENTATION_STATUS.md`.
 
 ### Approved decisions (summary; details doc 07)
 Git metadata packs = config source of truth → CI validation → Delta (release-versioned, insert-only, atomic activation pointer) → immutable per-run snapshot · core repo + one deployment repo per client; extensions via interfaces only · default separate DEV/QA/PROD workspaces, configurable topology, Terraform, Workflows MVP behind `OrchestrationProvider` · durable batch manifests, receipts, conditional watermarks, per-layer cursors, mandatory crash-injection matrix (doc 08) · erasure/retention/suppression, backup/DR (doc 11) · Azure AI Document Intelligence default OCR behind `OcrProvider`; advanced docs/RAG later · semantic = SQL views + metric views + TMDL with real Power BI deployment tests · sizing 500–5,000 objects / ≤10 TB are **design targets, not guarantees** · metadata UI outside MVP (UI-ready `MetadataService`).
+
+### Catalog layout
+`<client>_<env>` catalog; **implemented** schemas: `meta, audit, dq, recon, gov, bronze, silver, gold` (8). A `docs` schema for document runtime tables is a **planned future capability** (originals in ADLS Gen2, metadata/state in Delta) and is not implemented.
+
+### M1 status
+M1 closed as **LOCAL_VERIFIED** (no module is PRODUCTION_READY). Pending: Databricks integration, Azure DevOps pipeline execution, scale benchmark. M2 requires explicit design approval before any implementation.
 
 ### Baseline rule
 Approved architecture = baseline. Any deviation requires a written change request (impact on docs/ADRs/modules/tests) and user approval BEFORE implementation. Supersede ADRs, never silently edit.
@@ -20,7 +25,7 @@ Approved architecture = baseline. Any deviation requires a written change reques
 ## 3. Governance rules (binding)
 1. Never modify an approved architecture decision (ADR) or an existing core module without: (a) written impact analysis, (b) user approval. Supersede ADRs; never edit accepted ones silently.
 2. Never duplicate existing functionality. Search the repo and `docs/architecture/` first.
-3. Never mark a module `COMPLETE` without passing tests; link test evidence in `docs/status/TEST_EVIDENCE.md`.
+3. Status vocabulary is `LOCAL_VERIFIED` / `DATABRICKS_INTEGRATION_PENDING` / `PRODUCTION_READY` (never `COMPLETE`); link test evidence in `docs/status/TEST_EVIDENCE.md`. Never claim PRODUCTION_READY from local tests alone.
 4. A capability in a diagram is NOT implemented. Only `IMPLEMENTATION_STATUS.md` states truth.
 5. AI-generated code/config/metadata must go through human review + CI + approval before PROD. No LLM is required for deterministic ETL runtime.
 6. Never hardcode secrets, tokens, hostnames, client names, catalog names in core. Secrets only via Key Vault-backed secret scopes / UC service credentials / Managed Identity.
@@ -50,5 +55,6 @@ Python ≥3.10 packaged as wheel `de_accelerator`; PySpark; type hints; ruff + m
 - `docs/architecture/04_flows_and_workflows.md`
 - `docs/architecture/05_cross_cutting_designs.md`
 - `docs/architecture/06_capability_review_gaps_roadmap.md` (+ Rev 1 roadmap at end)
+- `docs/architecture/m2/` (M2 ingestion design, proposed)
 - `docs/architecture/07_revision1_decisions_and_impacts.md` · `08_recovery_protocol_and_crash_testing.md` · `09_metadata_engine_detailed_design.md` · `10_deployment_semantic_documents_sizing_ui.md` · `11_governance_erasure_retention_dr.md` · `12_M1_implementation_plan.md`
 - `docs/adr/ADR-0001-to-0006.md`, `ADR-0007-to-0017.md` · `docs/status/*`

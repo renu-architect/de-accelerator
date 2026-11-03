@@ -62,8 +62,8 @@ def test_store_commands_need_bootstrap():
 
 def test_full_operator_flow(cli, tmp_path):
     assert "DRY RUN" in cli("migrate", "--dry-run") and not cli.store.table_exists("cfg_object")
-    assert "schema version = 1" in cli("migrate")
-    assert "schema=1" in cli("status")
+    assert "schema version = 2" in cli("migrate")
+    assert "schema=2" in cli("status")
 
     out = cli("build-bundle", str(EXAMPLE), "--env", "DEV", "--out", str(tmp_path / "b"), factory=False)
     assert "built" in out

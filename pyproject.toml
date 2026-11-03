@@ -28,6 +28,7 @@ testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 markers = [
   "component: needs local Spark + Delta (slow)",
+  "integration: needs a real external system available locally (PostgreSQL server); skipped when unavailable",
   "databricks: needs a real Databricks workspace (DATABRICKS_INTEGRATION_PENDING; never run locally)",
 ]
 
@@ -48,4 +49,8 @@ files = ["src"]
 "src/de_accelerator/metadata/schema/tables.py" = ["E501"]
 "src/de_accelerator/metadata/validation/*.py" = ["E501"]   # rule messages are prose
 "src/de_accelerator/cli/main.py" = ["E501"]   # presentation strings
+"src/de_accelerator/audit/*.py" = ["E501"]    # dense row literals
+"src/de_accelerator/ingestion/*.py" = ["E501"]
+"src/de_accelerator/connectors/**/*.py" = ["E501"]
+"src/de_accelerator/processing/**/*.py" = ["E501"]
 "tests/**" = ["E501", "B017"]

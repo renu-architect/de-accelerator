@@ -10,7 +10,12 @@ def spark(tmp_path_factory):
     from de_accelerator.metadata.store.spark import build_local_spark
 
     wh = tmp_path_factory.mktemp("warehouse")
-    s = build_local_spark(str(wh))
+    try:  # PostgreSQL JDBC driver for the integration tier (downloaded once); fall back to a plain session if unavailable
+        s = build_local_spark(str(wh), extra_packages=["org.postgresql:postgresql:42.7.3"])
+        s.pg_driver_available = True  # type: ignore[attr-defined]
+    except Exception:  # pragma: no cover
+        s = build_local_spark(str(wh))
+        s.pg_driver_available = False  # type: ignore[attr-defined]
     yield s
     s.stop()
 

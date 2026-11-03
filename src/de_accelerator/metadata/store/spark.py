@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING, Any
 from de_accelerator.core.errors import StoreError
 from de_accelerator.core.naming import qualified_table
 from de_accelerator.metadata.schema.tables import table_map
-from de_accelerator.metadata.schema.tablespec import TableSpec, render_create, render_drop
+from de_accelerator.metadata.schema.tablespec import Col, TableSpec, render_add_columns, render_create, render_drop
 from de_accelerator.metadata.store.base import Row
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyspark.sql import SparkSession
 
 
-def build_local_spark(warehouse_dir: str, app: str = "de-accelerator-local") -> SparkSession:
+def build_local_spark(warehouse_dir: str, app: str = "de-accelerator-local", extra_packages: Sequence[str] = ()) -> SparkSession:
     """Local Spark session with Delta (for tests/CLI). Requires the `spark` extra."""
     import os
     import sys
@@ -34,12 +34,13 @@ def build_local_spark(warehouse_dir: str, app: str = "de-accelerator-local") -> 
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         .config("spark.sql.warehouse.dir", warehouse_dir)
         .config("spark.sql.shuffle.partitions", "2")
+        .config("spark.sql.redaction.options.regex", "(?i)url|password|user|token|accesstoken|secret")
         .config("spark.sql.session.timeZone", "UTC")
         .config("spark.ui.enabled", "false")
         .config("spark.databricks.delta.snapshotPartitions", "2")
         .config("spark.driver.extraJavaOptions", f"-Dderby.system.home={warehouse_dir}/_derby")
     )
-    spark = configure_spark_with_delta_pip(builder).getOrCreate()
+    spark = configure_spark_with_delta_pip(builder, extra_packages=list(extra_packages)).getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
     return spark
 
@@ -99,16 +100,28 @@ class SparkDeltaTableStore:
     def table_exists(self, name: str) -> bool:
         return bool(self.spark.catalog.tableExists(self._fq(name)))
 
+    def add_columns(self, table: str, cols: Sequence[Col]) -> None:
+        existing = {c.lower() for c in self.spark.table(self._fq(table)).columns}
+        new = [c for c in cols if c.name.lower() not in existing]
+        if new:
+            s = self._spec(table)
+            self.spark.sql(render_add_columns(s.schema, s.name, new, self.catalog, self.flavor))
+
     # --- DML
     def _df(self, spec: TableSpec, rows: Sequence[Row]) -> Any:
-        ddl = ", ".join(f"`{c.name}` {_SPARK_TYPES[c.type]}" for c in spec.columns)
-        data = []
+        """Build a DataFrame matching the PHYSICAL table. A column added by a newer schema version that the table does not
+        have yet (database not migrated) is tolerated only when every value is NULL; otherwise the write is refused."""
+        physical = {c.lower() for c in self.spark.table(self._fq(spec.name)).columns}
+        cols = [c for c in spec.columns if c.name.lower() in physical]
+        missing = [c for c in spec.columns if c.name.lower() not in physical]
         for r in rows:
             unknown = set(r) - set(spec.column_names)
             if unknown:
                 raise StoreError(f"{spec.name}: unknown columns {sorted(unknown)}")
-            data.append(tuple(r.get(c.name) for c in spec.columns))
-        return self.spark.createDataFrame(data, schema=ddl)
+            if any(r.get(c.name) is not None for c in missing):
+                raise StoreError(f"{spec.name}: table is missing columns {[c.name for c in missing]} (run `de-accel migrate`)")
+        ddl = ", ".join(f"`{c.name}` {_SPARK_TYPES[c.type]}" for c in cols)
+        return self.spark.createDataFrame([tuple(r.get(c.name) for c in cols) for r in rows], schema=ddl)
 
     def insert(self, table: str, rows: Sequence[Row]) -> int:
         if not rows:

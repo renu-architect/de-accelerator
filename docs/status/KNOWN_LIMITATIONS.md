@@ -20,4 +20,15 @@
 - Component (Delta) tests are slow (~5 min total); concurrency is tested with in-memory atomics, not concurrent Delta writers.
 - Scale benchmark (500/2,500/5,000 objects) not run; sizing remains an unmeasured design target.
 - Snapshot ids include the release id (no cross-release dedupe); per-layer cursors, CDC retention behaviour and crash-injection of ingestion are M2 scope.
-- ADR-0018 items marked ⚠ await your acknowledgement.
+- The `docs` schema (document runtime tables) is a planned future capability, not implemented: code stays at 8 schemas / 53 tables / 22 schema-only.
+
+## M2 limitations (source-to-Bronze, current state)
+- **No real SQL Server / Azure SQL execution yet.** The T-SQL generation, TLS URLs, rowversion safe bound and validation are unit-tested; execution is verified only against a real **PostgreSQL** server through the same JDBC connector. Docker is unavailable in the sandbox, so a SQL Server container test must run on a dev machine/CI agent.
+- **No Databricks execution.** Key Vault secret scope, Unity Catalog, JDBC driver availability on the runtime, the Azure SQL managed-identity token path (UC service credential), Delta type widening and the job template (`deployment/databricks/databricks.yml`) are untested.
+- Not implemented yet: CDC and deletes, file connectors (CSV/JSON/Parquet) and file tracking, REST, schema discovery / metadata auto-generation, SQL Server native CDC, backfill chunking, per-source circuit breaker, scale/performance measurement.
+- INCREMENTAL loads cannot detect source deletes (documented; remedy = periodic full/snapshot or CDC once implemented).
+- A crashed (not failed) runner leaves its lease until the TTL (30 min) expires; recovery by a new run waits for that. A handled failure releases the lease immediately.
+- Timestamp watermarks are carried at microsecond precision; `datetime2(7)` sources lose sub-microsecond precision (mitigated by lookback).
+- Delta idempotent writes (`txnAppId/txnVersion`) were verified on local Delta 3.2 only; the Databricks runtime must be re-verified.
+- `_DDL_ONLY` comments on activated audit tables are not updated in the physical table comments (status is tracked in `IMPLEMENTATION_STATUS.md`).
+- py4j DEBUG logging can expose JDBC credentials; the engine silences py4j wire logging and sets Spark option redaction, but a client enabling DEBUG on other libraries must keep that in mind.

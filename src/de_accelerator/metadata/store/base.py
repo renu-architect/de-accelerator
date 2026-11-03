@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
-from de_accelerator.metadata.schema.tablespec import TableSpec
+from de_accelerator.metadata.schema.tablespec import Col, TableSpec
 
 Row = dict[str, Any]
 
@@ -24,6 +24,10 @@ class TableStore(Protocol):
     def drop_table(self, spec: TableSpec) -> None: ...
 
     def table_exists(self, name: str) -> bool: ...
+
+    def add_columns(self, table: str, cols: Sequence[Col]) -> None:
+        """Additive schema change (idempotent: columns that already exist are skipped)."""
+        ...
 
     def insert(self, table: str, rows: Sequence[Row]) -> int: ...
 

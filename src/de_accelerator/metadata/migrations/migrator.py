@@ -15,7 +15,8 @@ from typing import Any
 from de_accelerator.core.errors import MigrationError
 from de_accelerator.core.logging import get_logger
 from de_accelerator.core.versioning import METADATA_SCHEMA_VERSION, framework_version
-from de_accelerator.metadata.schema.tablespec import TableSpec, render_create, render_drop
+from de_accelerator.metadata.schema.tables import table_map
+from de_accelerator.metadata.schema.tablespec import Col, TableSpec, render_add_columns, render_create, render_drop
 from de_accelerator.metadata.store.base import TableStore, now_utc
 
 log = get_logger("migrations")
@@ -24,12 +25,23 @@ MIGRATION_TABLE = "cfg_schema_migration"
 
 @dataclass(frozen=True)
 class Migration:
+    """A migration creates tables (`specs`) and/or adds columns (`add_columns`, additive only).
+
+    Rolling back a migration drops the tables it created; added columns are NOT removed (expand-only policy: older code
+    keeps working against a schema with extra nullable columns).
+    """
+
     version: int
     name: str
-    specs: Callable[[], list[TableSpec]]
+    specs: Callable[[], list[TableSpec]] = list
+    add_columns: Callable[[], dict[str, list[Col]]] | None = None
 
     def statements(self, catalog: str | None = None, flavor: str = "DATABRICKS") -> list[str]:
-        return [render_create(s, catalog, flavor) for s in self.specs()]
+        out = [render_create(s, catalog, flavor) for s in self.specs()]
+        tm = table_map()
+        for table, cols in (self.add_columns() if self.add_columns else {}).items():
+            out.append(render_add_columns(tm[table].schema, table, cols, catalog, flavor))
+        return out
 
     def down_statements(self, catalog: str | None = None, flavor: str = "DATABRICKS") -> list[str]:
         return [render_drop(s, catalog, flavor) for s in reversed(self.specs())]
@@ -41,6 +53,8 @@ class Migration:
     def up(self, store: TableStore) -> None:
         for s in self.specs():
             store.create_table(s)
+        for table, cols in (self.add_columns() if self.add_columns else {}).items():
+            store.add_columns(table, cols)
 
     def down(self, store: TableStore) -> None:
         for s in reversed(self.specs()):
@@ -94,6 +108,9 @@ class Migrator:
                 continue
             log.info("applying migration %s %s", m.version, m.name)
             m.up(self.store)
+            # a previously rolled-back migration (v>=2) keeps its row: flip it back instead of silently skipping the insert
+            self.store.update_where(MIGRATION_TABLE, {"status": "APPLIED", "checksum": m.checksum(), "applied_ts": now_utc(),
+                                                      "applied_by": self.actor}, {"version": m.version, "status": "ROLLED_BACK"})
             self.store.insert_if_absent(
                 MIGRATION_TABLE,
                 [{"version": m.version, "name": m.name, "checksum": m.checksum(), "applied_ts": now_utc(),

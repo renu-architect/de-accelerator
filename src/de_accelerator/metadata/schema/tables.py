@@ -10,7 +10,7 @@ from __future__ import annotations
 from de_accelerator.metadata.schema.entities import ENTITIES, EntityDef
 from de_accelerator.metadata.schema.tablespec import Col, Status, TableSpec
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _cols(spec: str) -> tuple[Col, ...]:
@@ -76,9 +76,9 @@ _D: Status = "DDL_ONLY"
 _RUNTIME = [
     _t("audit", "run_pipeline", "run_id:str! execution_code:str env_id:str trigger_type:str framework_version:str release_id:str snapshot_id:str status:str start_ts:ts end_ts:ts parent_run_id:str", "run_id", _D),
     _t("audit", "run_object", "run_object_id:str! run_id:str! object_code:str! layer:str status:str attempt:int rows_read:int rows_written:int rows_rejected:int duration_s:float error_class:str", "run_object_id", _D),
-    _t("audit", "run_batch_manifest", "batch_id:str! object_code:str! stream_key:str! batch_seq:int! batch_type:str! snapshot_id:str wm_from:str wm_to:str file_list:json expected_targets:json planned_by_run_id:str manifest_hash:str! planned_ts:ts", "object_code,stream_key,batch_seq", _D, append_only=True, comment="Immutable batch manifest (doc 08)"),
+    _t("audit", "run_batch_manifest", "batch_id:str! object_code:str! stream_key:str! batch_seq:int! batch_type:str! snapshot_id:str wm_from:str wm_to:str file_list:json expected_targets:json planned_by_run_id:str manifest_hash:str! planned_ts:ts release_id:str plan_json:json", "object_code,stream_key,batch_seq", _D, append_only=True, comment="Immutable batch manifest (doc 08)"),
     _t("audit", "run_batch_event", "batch_id:str! event_seq:int! event_type:str! stage:str run_id:str attempt:int payload:json event_ts:ts", "batch_id,event_seq", _D, append_only=True),
-    _t("audit", "run_target_receipt", "batch_id:str! layer:str! target_table:str! delta_version:int commit_tag:str rows_written:int rows_rejected:int content_checksum:str verified_ts:ts", "batch_id,layer,target_table", _D),
+    _t("audit", "run_target_receipt", "batch_id:str! layer:str! target_table:str! delta_version:int commit_tag:str rows_written:int rows_rejected:int content_checksum:str verified_ts:ts txn_app_id:str txn_version:int rows_read:int", "batch_id,layer,target_table", _D),
     _t("audit", "run_batch_lease", "object_code:str! stream_key:str! owner_run_id:str epoch:int! lease_expiry:ts", "object_code,stream_key", _D),
     _t("audit", "run_stage", "batch_id:str! stage:str! status:str delta_version:int start_ts:ts end_ts:ts", "batch_id,stage", _D),
     _t("audit", "run_attempt", "run_object_id:str! attempt_no:int! error:str start_ts:ts end_ts:ts retry_reason:str", "run_object_id,attempt_no", _D),
@@ -86,7 +86,7 @@ _RUNTIME = [
     _t("audit", "run_lineage", "edge_id:str! batch_id:str source_object:str target_object:str source_column:str target_column:str layer:str", "edge_id", _D),
     _t("audit", "run_schema_snapshot", "object_code:str! batch_id:str! schema_hash:str! schema_json:json change_type:str", "object_code,batch_id", _D),
     _t("audit", "run_file_tracking", "object_code:str! file_path:str! size:int mtime:ts file_hash:str batch_id:str status:str", "object_code,file_path", _D),
-    _t("audit", "wm_watermark", "object_code:str! stream_key:str! committed_value:str committed_seq:int! committed_batch_id:str updated_ts:ts", "object_code,stream_key", _D, comment="Source watermark (advance only after confirmed Bronze commit)"),
+    _t("audit", "wm_watermark", "object_code:str! stream_key:str! committed_value:str committed_seq:int! committed_batch_id:str updated_ts:ts epoch:int", "object_code,stream_key", _D, comment="Source watermark (advance only after confirmed Bronze commit)"),
     _t("audit", "wm_layer_cursor", "object_code:str! layer:str! applied_seq:int! applied_batch_id:str updated_ts:ts", "object_code,layer", _D, comment="Independent Silver/Gold cursors (ADR-0009)"),
     _t("dq", "dq_result", "dq_run_id:str! batch_id:str! rule_code:str! object_code:str status:str failed_count:int total_count:int failed_pct:float dq_score:float eval_ts:ts", "dq_run_id,rule_code", _D),
     _t("recon", "rc_result", "rc_run_id:str! batch_id:str! recon_code:str! object_code:str scope:str left_value:str right_value:str delta:str tolerance:str status:str eval_ts:ts", "rc_run_id,recon_code", _D),
@@ -97,6 +97,31 @@ _RUNTIME = [
     _t("gov", "gov_suppression_list", "token:str! key_id:str! added_request_id:str added_ts:ts", "token", _D, comment="HMAC tokens only"),
     _t("gov", "gov_retention_run", "run_id:str! policy_code:str! object_code:str action:str rows_affected:int dry_run:bool run_ts:ts", "run_id,policy_code", _D, append_only=True),
 ]
+
+
+# Columns added by schema v2 (migration 0002, additive/expand-only). Migration 0001 is FROZEN: it is rendered from tables_v1(),
+# i.e. the latest specs minus these columns, so its pinned checksum can never change by accident.
+V2_ADDED: dict[str, tuple[str, ...]] = {
+    "cfg_load_strategy": ("read_options", "cdc_op_map"),
+    "run_batch_manifest": ("release_id", "plan_json"),
+    "run_target_receipt": ("txn_app_id", "txn_version", "rows_read"),
+    "wm_watermark": ("epoch",),
+}
+
+
+def tables_v1() -> list[TableSpec]:
+    from dataclasses import replace
+
+    out = []
+    for t in all_tables():
+        drop = set(V2_ADDED.get(t.name, ()))
+        out.append(replace(t, columns=tuple(c for c in t.columns if c.name not in drop)) if drop else t)
+    return out
+
+
+def v2_added_columns() -> dict[str, list[Col]]:
+    tm = table_map()
+    return {name: [c for c in tm[name].columns if c.name in cols] for name, cols in V2_ADDED.items()}
 
 
 def all_tables() -> list[TableSpec]:

@@ -43,3 +43,11 @@ Databricks integration is `DATABRICKS_INTEGRATION_PENDING` for every module (no 
 - Result: `182 passed in 308.56s`; line coverage **95%** (2407 statements, 109 missed)
 - Includes: reader contract on 3 readers (19), CLI (7), migration checksum pin, snapshot/readers/CLI on real local Delta.
 - Not covered by this evidence: Databricks/Unity Catalog behaviour, Azure DevOps pipeline execution, scale benchmark (optional, not run).
+
+### M2.1 + M2.2 slice — FULL SUITE (all tiers incl. real PostgreSQL) — PASS — 2026-11-03
+- Command: `pytest -q tests --cov=de_accelerator` (also `ruff check src tests` and `mypy --strict`: clean)
+- Environment: Python 3.11.18, pyspark 3.5.9, delta-spark 3.2, **PostgreSQL 16 server** (local), PostgreSQL JDBC 42.7.3; local only (no Databricks, no SQL Server, not run on Azure DevOps)
+- Result: `335 passed in 554.64s` (0 failed, 0 skipped); line coverage **93%** (3,947 statements, 259 missed)
+- Tiers: unit (incl. M1), component on real local Delta (Bronze writer 16, ingestion engine 12, crash-recovery matrix 37), integration on real PostgreSQL (6), SQL-generation tests for SQL Server/Azure SQL/PostgreSQL (29)
+- Defects found and fixed by these tests during the increment: lease released with wall-clock instead of engine clock; exhausted transient errors wrongly marked fatal; handled failures kept the lease; migrator could not re-apply a rolled-back migration >= 2; Spark store wrote columns missing from an unmigrated table; `validate-config --env all` ignored the pack's declared environments; **py4j DEBUG logging exposed the JDBC password** (now silenced + Spark option redaction).
+- NOT covered by this evidence: real SQL Server/Azure SQL, Databricks (Key Vault scope, Unity Catalog, job run, drivers, managed identity), Azure DevOps pipeline, scale/performance.

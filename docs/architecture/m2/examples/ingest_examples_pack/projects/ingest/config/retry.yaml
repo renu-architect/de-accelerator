@@ -1,0 +1,3 @@
+kind: retry_policy
+items:
+  - {code: standard, max_attempts: 3, backoff_sec: 30, backoff_mult: 2.0, retryable_error_classes: [TRANSIENT]}

@@ -1,0 +1,11 @@
+pack_format: 1
+pack_name: sqlserver-demo
+pack_version: 1.0.0
+requires_core: '>=0.1.0.dev0,<1.0'
+metadata_schema_version: 2
+client:
+  code: acme
+  name: Acme (demo)
+environments:
+- DEV
+- PROD

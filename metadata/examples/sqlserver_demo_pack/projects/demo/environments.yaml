@@ -1,0 +1,8 @@
+kind: environment
+items:
+- code: DEV
+  catalog_name: acme_dev
+  secret_scope: kv-acme-dev
+- code: PROD
+  catalog_name: acme_prod
+  secret_scope: kv-acme-prod
