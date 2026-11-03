@@ -1,0 +1,9 @@
+overrides:
+- kind: source
+  project: sales
+  key:
+    code: erp_sql
+  set:
+    connection:
+      host: kv:erp-host-qa
+      database: kv:erp-db-qa

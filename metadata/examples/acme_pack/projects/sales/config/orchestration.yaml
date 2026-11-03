@@ -1,0 +1,6 @@
+kind: orchestration_provider
+items:
+- code: workflows
+  provider_type: databricks_workflows
+  options:
+    max_concurrent_runs: 1

@@ -1,0 +1,20 @@
+kind: environment
+items:
+- code: DEV
+  catalog_name: acme_dev
+  storage_root: abfss://delta@acmedev.dfs.core.windows.net/
+  secret_scope: kv-acme-dev
+  default_concurrency: 4
+  topology: ISOLATED
+- code: QA
+  catalog_name: acme_qa
+  storage_root: abfss://delta@acmeqa.dfs.core.windows.net/
+  secret_scope: kv-acme-qa
+  default_concurrency: 4
+  topology: ISOLATED
+- code: PROD
+  catalog_name: acme_prod
+  storage_root: abfss://delta@acmeprod.dfs.core.windows.net/
+  secret_scope: kv-acme-prod
+  default_concurrency: 8
+  topology: ISOLATED

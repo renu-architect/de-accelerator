@@ -1,0 +1,8 @@
+kind: semantic_measure
+items:
+- entity: sales
+  code: total_amount
+  expression: SUM(Amount)
+  agg_rule: SUM
+  format: '#,0.00'
+  is_kpi: true

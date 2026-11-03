@@ -1,0 +1,8 @@
+kind: dependency
+items:
+- object: orders
+  depends_on: customers
+  dependency_type: SOFT
+- object: fact_sales
+  depends_on: orders
+  dependency_type: HARD

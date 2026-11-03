@@ -1,0 +1,6 @@
+kind: semantic_target
+items:
+- code: sales_metric_view
+  target_type: METRIC_VIEW
+  entities:
+  - sales

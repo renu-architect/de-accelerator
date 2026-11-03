@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "de-accelerator"
+version = "0.1.0.dev0"
+description = "Enterprise metadata-driven data engineering accelerator (core)"
+requires-python = ">=3.10"
+dependencies = ["pyyaml>=6", "jsonschema>=4.17", "packaging>=23"]
+
+[project.optional-dependencies]
+# Spark/Delta are provided by the Databricks runtime on clusters; needed locally only for tests/CLI delta store.
+spark = ["pyspark>=3.5,<4", "delta-spark>=3.2,<4"]
+dev = ["pytest", "pytest-cov", "hypothesis", "ruff", "mypy", "types-PyYAML", "types-jsonschema"]
+
+[project.scripts]
+de-accel = "de_accelerator.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+de_accelerator = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+  "component: needs local Spark + Delta (slow)",
+  "databricks: needs a real Databricks workspace (DATABRICKS_INTEGRATION_PENDING; never run locally)",
+]
+
+[tool.ruff]
+line-length = 130
+target-version = "py310"
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+files = ["src"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/de_accelerator/metadata/schema/entities.py" = ["E501"]   # dense declarative definitions
+"src/de_accelerator/metadata/schema/tables.py" = ["E501"]
+"src/de_accelerator/metadata/validation/*.py" = ["E501"]   # rule messages are prose
+"src/de_accelerator/cli/main.py" = ["E501"]   # presentation strings
+"tests/**" = ["E501", "B017"]

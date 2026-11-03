@@ -1,0 +1,16 @@
+kind: recon_rule
+items:
+- object: orders
+  code: rc_cnt_01
+  scope: SRC_BRZ
+  check_type: COUNT
+  tolerance_abs: 0
+- object: orders
+  code: rc_sum_01
+  scope: BRZ_SLV
+  check_type: SUM
+  columns:
+  - Amount
+  tolerance_pct: 0.001
+  is_financial: true
+  on_fail: FAIL_BATCH

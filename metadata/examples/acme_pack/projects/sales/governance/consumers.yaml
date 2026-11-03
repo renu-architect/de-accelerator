@@ -1,0 +1,6 @@
+kind: external_consumer
+items:
+- code: pbi_sales
+  name: Power BI Sales model (import)
+  kind: powerbi
+  notify_on_erasure: true

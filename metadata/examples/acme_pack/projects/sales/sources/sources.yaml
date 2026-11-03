@@ -1,0 +1,14 @@
+kind: source
+items:
+- code: erp_sql
+  source_type: sqlserver
+  connector_type: jdbc
+  auth_mode: SECRET
+  connection:
+    host: kv:erp-host
+    database: kv:erp-db
+    user: kv:erp-user
+    password: kv:erp-pwd
+  options:
+    fetchsize: 10000
+  description: ERP (synthetic)

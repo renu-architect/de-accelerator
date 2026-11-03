@@ -1,0 +1,8 @@
+kind: semantic_entity
+items:
+- code: sales
+  object: fact_sales
+  entity_type: FACT
+  grain:
+  - OrderID
+  display_name: Sales

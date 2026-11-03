@@ -1,0 +1,39 @@
+kind: object
+items:
+- code: customers
+  source: erp_sql
+  schema_name: dbo
+  object_name: Customers
+  business_keys:
+  - CustomerID
+  primary_keys:
+  - CustomerID
+  enabled_layers:
+  - BRONZE
+  - SILVER
+  personal_data: true
+  sensitivity: confidential
+  target_bronze: bronze.erp_customers
+  target_silver: silver.customers
+- code: orders
+  source: erp_sql
+  schema_name: dbo
+  object_name: Orders
+  business_keys:
+  - OrderID
+  primary_keys:
+  - OrderID
+  enabled_layers:
+  - BRONZE
+  - SILVER
+  target_bronze: bronze.erp_orders
+  target_silver: silver.orders
+- code: fact_sales
+  source: erp_sql
+  object_name: fact_sales
+  object_kind: derived
+  business_keys:
+  - OrderID
+  enabled_layers:
+  - GOLD
+  target_gold: gold.fact_sales

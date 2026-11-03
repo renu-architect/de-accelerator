@@ -1,0 +1,5 @@
+name: Sales Analytics
+domain: Sales
+owner: sales-data-team
+sla_class: GOLD-4h
+cost_center: CC-100

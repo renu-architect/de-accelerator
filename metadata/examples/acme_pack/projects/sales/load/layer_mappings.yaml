@@ -1,0 +1,29 @@
+kind: layer_mapping
+items:
+- object: customers
+  layer: BRONZE
+  target_table: bronze.erp_customers
+  merge_type: APPEND
+- object: customers
+  layer: SILVER
+  target_table: silver.customers
+  merge_type: SCD1
+  dedupe_keys:
+  - CustomerID
+- object: orders
+  layer: BRONZE
+  target_table: bronze.erp_orders
+  merge_type: APPEND
+- object: orders
+  layer: SILVER
+  target_table: silver.orders
+  merge_type: SCD2
+  scd_columns:
+  - Amount
+  dedupe_keys:
+  - OrderID
+  dedupe_order: ModifiedDate desc
+- object: fact_sales
+  layer: GOLD
+  target_table: gold.fact_sales
+  merge_type: OVERWRITE

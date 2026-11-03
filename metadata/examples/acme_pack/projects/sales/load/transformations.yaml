@@ -1,0 +1,10 @@
+kind: transformation
+items:
+- object: fact_sales
+  layer: GOLD
+  step_no: 1
+  type: SQL
+  body_ref: transform_files/gold/fact_sales.sql
+  input_objects:
+  - orders
+  - customers

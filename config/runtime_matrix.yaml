@@ -1,0 +1,17 @@
+# Runtime compatibility matrix. NOT hardcoded in code: tooling reads this file.
+# Versions marked `verified: false` must be validated against the Databricks release notes
+# for the client's chosen LTS runtime before being relied on (user decision: validate before finalizing).
+default_profile: dbr_lts_py311_spark35
+profiles:
+  dbr_lts_py311_spark35:
+    python: "3.11"
+    spark: "3.5.x"
+    delta_spark: "3.2.x"      # matches Spark 3.5 line
+    verified: false           # pending verification against selected DBR LTS
+    notes: "Local test env uses pyspark 3.5.x + delta-spark 3.2.x on Python 3.11."
+  candidate_spark4:
+    python: "3.12"
+    spark: "4.0.x"
+    delta_spark: "4.0.x"
+    verified: false
+    notes: "Evaluate when client mandates a Spark 4 based LTS."

@@ -1,0 +1,21 @@
+kind: dq_rule
+items:
+- object: orders
+  code: ord_nn_01
+  rule_type: NOT_NULL
+  columns:
+  - OrderID
+  severity: CRITICAL
+  threshold_pct: 0.0
+  action: FAIL_BATCH
+- object: orders
+  code: ord_rng_01
+  rule_type: RANGE
+  columns:
+  - Amount
+  params:
+    min: 0
+    max: 1000000
+  severity: ERROR
+  threshold_pct: 0.5
+  action: QUARANTINE

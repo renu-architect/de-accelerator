@@ -1,0 +1,14 @@
+kind: execution
+items:
+- code: daily_sales
+  scope:
+    objects:
+    - customers
+    - orders
+    - fact_sales
+  schedule_cron: 0 0 2 * * ?
+  schedule_timezone: UTC
+  concurrency: 4
+  retry_policy: standard
+  timeout_min: 120
+  provider: workflows

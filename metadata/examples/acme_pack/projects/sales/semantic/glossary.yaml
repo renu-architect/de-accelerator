@@ -1,0 +1,6 @@
+kind: semantic_glossary
+items:
+- code: order
+  term: Order
+  definition: A confirmed customer purchase.
+  owner: sales-data-team
