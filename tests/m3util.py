@@ -73,7 +73,7 @@ def write_pack(
     put(
         "src",
         "source",
-        [{"code": "erp", "source_type": "mock", "connector_type": "mock", "auth_mode": "NONE", "connection": {"dataset": "erp"}}],
+        [source or {"code": "erp", "source_type": "mock", "connector_type": "mock", "auth_mode": "NONE", "connection": {"dataset": "erp"}}],
     )
     objs, cols, maps, dqs, loads = [], [], [], [], []
     for o in objects:
