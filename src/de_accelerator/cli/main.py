@@ -129,6 +129,9 @@ def _parser() -> argparse.ArgumentParser:
     d = sub.add_parser("diff", help="row-level diff between two releases")
     d.add_argument("--from", dest="frm", default="none")
     d.add_argument("--to", required=True)
+    from de_accelerator.cli import transform as _transform
+
+    _transform.add_parsers(sub)
     return p
 
 
@@ -269,6 +272,10 @@ def _dispatch(args: argparse.Namespace, factory: StoreFactory, out: Callable[[st
         return 0
     if args.cmd in ("ingest", "batch-status", "abandon-batch", "reprocess"):
         return _ingestion_commands(args, cfg, store, env, engine_factory, out)
+    from de_accelerator.cli import transform as _transform
+
+    if args.cmd in _transform.COMMANDS:
+        return _transform.dispatch(args, cfg, store, env, out, _emit)
     if args.cmd == "diff":
         changes = ChangeDiffer(store).diff(None if args.frm == "none" else args.frm, args.to)
         rows = [{"table": c.table, "key": c.key, "change": c.change_type} for c in changes]

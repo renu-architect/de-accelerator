@@ -11,7 +11,7 @@
 | D4 | `REJECT` default for cast errors (`FAIL` optional); reject rows are pointers `(src_batch_id, _row_hash)`; classified **restricted pseudonymous data**, not a privacy guarantee | HMAC reference = M4 option |
 | D5 | SCD2 late arrivals go to the reject table (counted); no skip workflow; operators can only `replan` an uncommitted unit | actor name unauthenticated (as M2) |
 | D6 | Gold SQL/PySpark = reviewed, checksum-verified files under `transform_root`; `inline_sql` rejected; typed bound parameters; tokenizer guard is defence in depth | trust boundary documented |
-| D7 | Gold FULL (`OVERWRITE`) and KEY_MERGE (`MERGE`, upsert only); CDF designed, deferred (validator rejects) | |
+| D7 | Gold FULL (`OVERWRITE`) and KEY_MERGE (`MERGE`, upsert only); CDF designed, deferred (no CDF setting; `{{ delta.* }}` rejected at run time) | |
 | D8 | **No M1/M2 behaviour change; no M2 file edited.** Only the public M2 API (enforced by test). ≈40+25 lines of retry/runner logic temporarily duplicated; consolidation in M4 (`M4-CONSOLIDATE-01`) | approved governance exception |
 | D9 | Minimal dependency-aware runner (levels, parallel within a level, HARD-skip) | planner/DAG = M4 |
 | D10 | Basic reject tables and basic DQ (`NOT_NULL, VALID_VALUES, RANGE`; `LOG/QUARANTINE/FAIL_BATCH`); other DQ types rejected for v3 packs only | v2 packs keep loading |
