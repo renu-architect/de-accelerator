@@ -23,19 +23,19 @@ def test_migration_numbering_enforced(clean):
 
 def test_dry_run_changes_nothing(clean):
     stmts = Migrator(clean, MIGRATIONS).apply(dry_run=True)
-    assert len(stmts) == 53 + 4 and not clean.table_exists("cfg_object")  # 53 CREATE (0001) + 4 ALTER (0002)
+    assert len(stmts) == 53 + 4 + 3 and not clean.table_exists("cfg_object")  # 53 CREATE (0001) + 4 ALTER (0002) + 3 ALTER (0003)
 
 
 def test_apply_is_idempotent_and_registers_framework(clean):
     m = Migrator(clean, MIGRATIONS, actor="tester")
     assert m.current_version() == 0
     m.apply()
-    assert m.current_version() == 2 and clean.table_exists("cfg_object") and clean.table_exists("wm_layer_cursor")
+    assert m.current_version() == 3 and clean.table_exists("cfg_object") and clean.table_exists("wm_layer_cursor")
     rows = sorted(clean.select("cfg_schema_migration"), key=lambda r: r["version"])
-    assert len(rows) == 2 and rows[0]["applied_by"] == "tester" and [r["checksum"] for r in rows] == [m.checksum() for m in MIGRATIONS]
+    assert len(rows) == 3 and rows[0]["applied_by"] == "tester" and [r["checksum"] for r in rows] == [m.checksum() for m in MIGRATIONS]
     assert clean.count("cfg_framework_version") == 1
     assert m.apply() == []  # nothing pending
-    assert clean.count("cfg_schema_migration") == 2 and clean.count("cfg_framework_version") == 1
+    assert clean.count("cfg_schema_migration") == 3 and clean.count("cfg_framework_version") == 1
 
 
 def test_crash_after_up_before_bookkeeping_is_healed(clean):
@@ -43,7 +43,7 @@ def test_crash_after_up_before_bookkeeping_is_healed(clean):
     m = Migrator(clean, MIGRATIONS)
     assert m.current_version() == 0
     m.apply()
-    assert m.current_version() == 2
+    assert m.current_version() == 3
 
 
 def test_up_down_up(clean):
@@ -54,7 +54,7 @@ def test_up_down_up(clean):
     m.rollback(0, allow_destroy=True)
     assert not clean.table_exists("cfg_object") and not clean.table_exists("cfg_schema_migration")
     m.apply()
-    assert m.current_version() == 2 and clean.table_exists("cfg_object")
+    assert m.current_version() == 3 and clean.table_exists("cfg_object")
 
 
 def test_checksum_drift_detected(clean):
@@ -101,7 +101,7 @@ def test_v2_upgrade_path_preserves_data_and_adds_columns(clean):
     assert "read_options" not in physical_columns(clean, "cfg_load_strategy")
     clean.insert("wm_watermark", [{"object_code": "o", "stream_key": "live", "committed_value": "x", "committed_seq": 1,
                                    "committed_batch_id": "b", "updated_ts": None}])  # fmt: skip
-    m.apply()
+    m.apply(target=2)
     assert m.current_version() == 2
     assert {"read_options", "cdc_op_map"} <= physical_columns(clean, "cfg_load_strategy")
     assert {"release_id", "plan_json"} <= physical_columns(clean, "run_batch_manifest")
@@ -119,7 +119,7 @@ def test_rollback_of_additive_migration_keeps_columns(clean):
     assert m.current_version() == 1
     assert "epoch" in physical_columns(clean, "wm_watermark")
     m.apply()  # re-apply is idempotent
-    assert m.current_version() == 2
+    assert m.current_version() == 3
 
 
 def test_migration_0002_checksum_is_pinned():
@@ -127,3 +127,25 @@ def test_migration_0002_checksum_is_pinned():
 
     pinned = (Path(__file__).resolve().parents[1] / "golden" / "migration_0002.sha256").read_text().strip()
     assert MIGRATIONS[1].checksum() == pinned
+
+
+def test_migration_0003_checksum_is_pinned():
+    from pathlib import Path
+
+    pinned = (Path(__file__).resolve().parents[1] / "golden" / "migration_0003.sha256").read_text().strip()
+    assert MIGRATIONS[2].checksum() == pinned
+
+
+def test_v3_upgrade_path_preserves_data_and_adds_columns(clean):
+    """M3: a database at schema v2 is upgraded in place (additive): old rows survive, new columns are NULL."""
+    m = Migrator(clean, MIGRATIONS)
+    m.apply(target=2)
+    assert m.current_version() == 2
+    assert "input_versions" not in physical_columns(clean, "wm_layer_cursor")
+    clean.insert("wm_layer_cursor", [{"object_code": "o", "layer": "SILVER", "applied_seq": 4, "applied_batch_id": "b", "updated_ts": None}])
+    m.apply()
+    assert m.current_version() == 3
+    assert {"target_name"} <= physical_columns(clean, "cfg_column")
+    assert {"effective_column", "on_cast_error", "column_mode"} <= physical_columns(clean, "cfg_layer_mapping")
+    row = clean.select("wm_layer_cursor")[0]
+    assert row["applied_seq"] == 4 and row["input_versions"] is None

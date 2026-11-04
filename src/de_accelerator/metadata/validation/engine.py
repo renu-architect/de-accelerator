@@ -101,7 +101,14 @@ class ValidationReport:
 
 
 def run_rules(ctx: ValidationContext) -> list[Finding]:
-    from de_accelerator.metadata.validation import rules_compat, rules_connectors, rules_policy, rules_referential, rules_semantic  # noqa: F401
+    from de_accelerator.metadata.validation import (  # noqa: F401
+        rules_compat,
+        rules_connectors,
+        rules_policy,
+        rules_referential,
+        rules_semantic,
+        rules_transform,
+    )
 
     try:  # soft, lazy dependency so built-in connector validators are always registered (connectors never import ingestion)
         import de_accelerator.connectors.builtin  # noqa: F401

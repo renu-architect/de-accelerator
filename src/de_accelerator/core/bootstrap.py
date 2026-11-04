@@ -25,6 +25,7 @@ BOOTSTRAP_SCHEMA: dict[str, Any] = {
         "secret_scope": {"type": "string"},
         "framework_version_pin": {"type": "string"},
         "topology": {"enum": ["ISOLATED", "NONPROD_SHARED", "SINGLE_WORKSPACE"], "default": "ISOLATED"},
+        "transform_root": {"type": "string"},
     },
 }
 
@@ -39,6 +40,7 @@ class BootstrapConfig:
     secret_scope: str | None = None
     framework_version_pin: str | None = None
     topology: str = "ISOLATED"
+    transform_root: str | None = None  # M3: directory holding reviewed Gold SQL/PySpark files (deployment artefact)
 
 
 def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
@@ -68,4 +70,5 @@ def load_bootstrap(base_path: str | Path, env_path: str | Path | None = None) ->
         secret_scope=data.get("secret_scope"),
         framework_version_pin=data.get("framework_version_pin"),
         topology=data.get("topology", "ISOLATED"),
+        transform_root=data.get("transform_root"),
     )

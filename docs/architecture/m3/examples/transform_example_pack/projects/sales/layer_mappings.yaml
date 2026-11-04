@@ -7,7 +7,7 @@ items:
     layer: SILVER
     target_table: silver.customers
     merge_type: SCD2
-    scd_columns: [email, country]                 # tracked attributes (target_name), a change opens a new version
+    scd_columns: [Email, Country]                 # tracked attributes (source column names); a change opens a new version
     dedupe_keys: [CustomerID]
     dedupe_order: "ModifiedDate desc"
     effective_column: ModifiedDate                # v3: effective time of a version (default _ingest_ts)

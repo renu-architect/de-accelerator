@@ -6,7 +6,7 @@ from de_accelerator.metadata.validation.engine import ValidationContext  # noqa:
 
 import de_accelerator.metadata.validation.rules_compat, de_accelerator.metadata.validation.rules_policy  # noqa: F401,E401
 import de_accelerator.metadata.validation.rules_referential, de_accelerator.metadata.validation.rules_semantic  # noqa: F401,E401
-import de_accelerator.metadata.validation.rules_connectors  # noqa: F401
+import de_accelerator.metadata.validation.rules_connectors, de_accelerator.metadata.validation.rules_transform  # noqa: F401,E401
 import de_accelerator.connectors.builtin  # noqa: F401
 
 order = {"REFERENTIAL": 0, "SEMANTIC": 1, "POLICY": 2, "COMPAT": 3}

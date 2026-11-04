@@ -95,7 +95,7 @@ CASES: dict[str, tuple] = {
     "MDV-6004": (mut(OBJ, lambda it: item(it, code="orders").update(partition_cols=["OrderID"])), {}),
     "MDV-6010": (mut(SRC, lambda it: it[0]["connection"].pop("password")), {}),
     "MDV-5001": (lambda root: None, {"core_version": "2.0.0"}),
-    "MDV-5002": (manifest(metadata_schema_version=3), {}),
+    "MDV-5002": (manifest(metadata_schema_version=4), {}),
     "MDV-5003": (manifest(pack_version="v1"), {}),
     "MDV-5004": (manifest(pack_format=2), {}),
     "MDV-5005": (lambda root: None, {"deprecated_keys": {"object.priority": "use 'tags.priority'"}}),
@@ -107,6 +107,43 @@ CASES["MDV-5005"] = (mut(OBJ, lambda it: item(it, code="orders").update(priority
 
 def run(root: Path, env="DEV", **kw):
     return validate_pack(root, env, **kw)[0]
+
+
+# ---- M3 transformation rules (MDV-7xxx): active only for packs declaring metadata_schema_version >= 3 -------------------------
+def _m3(*fns):
+    def go(root):
+        manifest(metadata_schema_version=3)(root)
+        for f in fns:
+            f(root)
+
+    return go
+
+
+def _drop(rel, **match):
+    def fn(it):
+        it[:] = [i for i in it if not all(i.get(k) == v for k, v in match.items())]
+
+    return mut(rel, fn)
+
+
+CASES.update({
+    "MDV-7001": (_m3(_drop(COL, object="customers")), {}),
+    "MDV-7002": (_m3(mut(LM, lambda it: item(it, object="customers", layer="SILVER").update(column_mode="PASSTHROUGH"))), {}),
+    "MDV-7003": (_m3(mut(LM, lambda it: item(it, object="customers", layer="SILVER").update(effective_column="Nope"))), {}),
+    "MDV-7004": (_m3(mut(LM, lambda it: item(it, object="orders", layer="SILVER").update(dedupe_order="Nope desc"))), {}),
+    "MDV-7005": (_m3(mut(COL, lambda it: item(it, object="orders", name="Amount").update(target_name="bad name"))), {}),
+    "MDV-7006": (_m3(mut(COL, lambda it: item(it, object="orders", name="Amount").update(cleanse_rules={"ops": [{"op": "eval"}]}))), {}),
+    "MDV-7007": (_m3(mut(OBJ, lambda it: item(it, code="orders").update(delete_mode="hard"))), {}),
+    "MDV-7008": (_m3(mut(LM, lambda it: item(it, object="fact_sales", layer="GOLD").update(merge_type="APPEND"))), {}),
+    "MDV-7009": (_m3(_drop(TR, object="fact_sales")), {}),
+    "MDV-7010": (_m3(mut(TR, lambda it: it[0].update(type="BUILTIN"))), {}),
+    "MDV-7011": (_m3(mut(OBJ, lambda it: item(it, code="orders").update(enabled_layers=["BRONZE"]))), {}),
+    "MDV-7012": (_m3(mut(TR, lambda it: it[0].update(params={"x": {"type": "blob", "value": 1}}))), {}),
+    "MDV-7013": (_m3(mut(DQ, lambda it: item(it, code="ord_rng_01").update(rule_type="FRESHNESS"))), {}),
+    "MDV-7014": (_m3(mut(LM, lambda it: item(it, object="orders", layer="SILVER").update(target_table="silver.other"))), {}),
+    "MDV-7015": (_m3(mut(OBJ, lambda it: item(it, code="orders").update(business_keys=[]))), {}),
+    "MDV-7016": (_m3(mut(COL, lambda it: item(it, object="orders", name="Amount").update(target_type="varchar(10)"))), {}),
+})
 
 
 def test_clean_example_has_no_findings():
@@ -245,3 +282,34 @@ def test_supported_configuration_still_validates(tmp_path):
     edit_items(root, SRC, lambda it: it[0]["options"].update(max_connections=4, encrypt=True, trust_server_certificate=False,
                                                               query_timeout_sec=600, login_timeout_sec=20))  # fmt: skip
     assert run(root).ok
+
+
+def test_v3_rules_are_inactive_for_older_packs_and_acme_stays_valid(tmp_path):
+    """Backward compatibility: the same violations in a v1/v2 pack raise no MDV-7xxx finding."""
+    root = copy_pack(tmp_path)
+    edit_items(root, OBJ, lambda it: item(it, code="orders").update(delete_mode="hard"))
+    assert not {c for c in run(root, "DEV").codes() if c.startswith("MDV-7")}
+
+
+def test_acme_pack_declared_as_v3_has_no_transform_errors(tmp_path):
+    root = copy_pack(tmp_path)
+    manifest(metadata_schema_version=3)(root)
+    assert not {c for c in run(root, "DEV").codes() if c.startswith("MDV-7")}
+
+
+def test_m3_example_pack_validates_as_schema_v3():
+    root = EXAMPLE.parents[2] / "docs" / "architecture" / "m3" / "examples" / "transform_example_pack"
+    r = run(root, "DEV")
+    assert r.ok, r.to_text()
+
+
+def test_cleanse_parse_operation_must_be_last_and_underscore_targets_are_reserved(tmp_path):
+    root = copy_pack(tmp_path)
+    manifest(metadata_schema_version=3)(root)
+    edit_items(root, COL, lambda it: item(it, object="orders", name="Amount").update(
+        cleanse_rules={"ops": [{"op": "parse_date", "format": "yyyy"}, {"op": "trim"}]}))
+    assert "MDV-7006" in run(root, "DEV").codes()
+    root2 = copy_pack(tmp_path / "b")
+    manifest(metadata_schema_version=3)(root2)
+    edit_items(root2, COL, lambda it: item(it, object="orders", name="Amount").update(target_name="_hidden"))
+    assert "MDV-7005" in run(root2, "DEV").codes()

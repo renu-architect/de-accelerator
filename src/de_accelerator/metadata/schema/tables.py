@@ -10,7 +10,7 @@ from __future__ import annotations
 from de_accelerator.metadata.schema.entities import ENTITIES, EntityDef
 from de_accelerator.metadata.schema.tablespec import Col, Status, TableSpec
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _cols(spec: str) -> tuple[Col, ...]:
@@ -87,7 +87,7 @@ _RUNTIME = [
     _t("audit", "run_schema_snapshot", "object_code:str! batch_id:str! schema_hash:str! schema_json:json change_type:str", "object_code,batch_id", _D),
     _t("audit", "run_file_tracking", "object_code:str! file_path:str! size:int mtime:ts file_hash:str batch_id:str status:str", "object_code,file_path", _D),
     _t("audit", "wm_watermark", "object_code:str! stream_key:str! committed_value:str committed_seq:int! committed_batch_id:str updated_ts:ts epoch:int", "object_code,stream_key", _D, comment="Source watermark (advance only after confirmed Bronze commit)"),
-    _t("audit", "wm_layer_cursor", "object_code:str! layer:str! applied_seq:int! applied_batch_id:str updated_ts:ts", "object_code,layer", _D, comment="Independent Silver/Gold cursors (ADR-0009)"),
+    _t("audit", "wm_layer_cursor", "object_code:str! layer:str! applied_seq:int! applied_batch_id:str updated_ts:ts input_versions:json", "object_code,layer", _D, comment="Independent Silver/Gold cursors (ADR-0009)"),
     _t("dq", "dq_result", "dq_run_id:str! batch_id:str! rule_code:str! object_code:str status:str failed_count:int total_count:int failed_pct:float dq_score:float eval_ts:ts", "dq_run_id,rule_code", _D),
     _t("recon", "rc_result", "rc_run_id:str! batch_id:str! recon_code:str! object_code:str scope:str left_value:str right_value:str delta:str tolerance:str status:str eval_ts:ts", "rc_run_id,recon_code", _D),
     _t("recon", "rc_mismatch", "rc_run_id:str! recon_code:str! mismatch_key:str! left_payload:json right_payload:json", "rc_run_id,recon_code,mismatch_key", _D),
@@ -109,12 +109,20 @@ V2_ADDED: dict[str, tuple[str, ...]] = {
 }
 
 
+# Columns added by schema v3 (migration 0003, M3 transformation; additive). Also stripped from the frozen 0001 rendering.
+V3_ADDED: dict[str, tuple[str, ...]] = {
+    "cfg_column": ("target_name",),
+    "cfg_layer_mapping": ("effective_column", "on_cast_error", "column_mode"),
+    "wm_layer_cursor": ("input_versions",),
+}
+
+
 def tables_v1() -> list[TableSpec]:
     from dataclasses import replace
 
     out = []
     for t in all_tables():
-        drop = set(V2_ADDED.get(t.name, ()))
+        drop = set(V2_ADDED.get(t.name, ())) | set(V3_ADDED.get(t.name, ()))
         out.append(replace(t, columns=tuple(c for c in t.columns if c.name not in drop)) if drop else t)
     return out
 
@@ -122,6 +130,11 @@ def tables_v1() -> list[TableSpec]:
 def v2_added_columns() -> dict[str, list[Col]]:
     tm = table_map()
     return {name: [c for c in tm[name].columns if c.name in cols] for name, cols in V2_ADDED.items()}
+
+
+def v3_added_columns() -> dict[str, list[Col]]:
+    tm = table_map()
+    return {name: [c for c in tm[name].columns if c.name in cols] for name, cols in V3_ADDED.items()}
 
 
 def all_tables() -> list[TableSpec]:

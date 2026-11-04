@@ -119,6 +119,8 @@ ENTITIES: tuple[EntityDef, ...] = (
         _b("is_pk"), _b("is_bk"), _b("is_nullable", True), _s("classification", enum=SENSITIVITY),
         _b("is_pii"), _s("mask_policy"), _s("default_value"), _j("cleanse_rules"),
         _s("fk_object", ref="object"), _s("fk_column"), _s(_D),
+        # --- schema v3 (M3): Silver column name when it differs from the Bronze/source column ---
+        _s("target_name"),
     )),  # fmt: skip
     EntityDef("load_strategy", "cfg_load_strategy", ("object",), (
         _s("object", True, ref="object"), _s("load_type", True, enum=LOAD_TYPES),
@@ -137,6 +139,8 @@ ENTITIES: tuple[EntityDef, ...] = (
         _s("object", True, ref="object"), _s("layer", True, enum=LAYERS), _s("target_table"),
         _s("merge_type", enum=MERGE_TYPES, default="APPEND"), _l("scd_columns"), _l("dedupe_keys"),
         _s("dedupe_order"), _l("cluster_cols"), _j("maintenance"),
+        # --- schema v3 (M3) ---
+        _s("effective_column"), _s("on_cast_error", enum=("REJECT", "FAIL")), _s("column_mode", enum=("DECLARED", "PASSTHROUGH")),
     )),
     EntityDef("transformation", "cfg_transformation", ("object", "layer", "step_no"), (
         _s("object", True, ref="object"), _s("layer", True, enum=LAYERS), _i("step_no", True),
