@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from de_accelerator.core.errors import NotFoundError
+from de_accelerator.core.logging import redact
 from de_accelerator.core.versioning import framework_version
 from de_accelerator.ingestion.engine import IngestionEngine, ObjectResult, RetrySettings
 from de_accelerator.metadata.reader import MetadataReader, SnapshotMetadataReader, StoreConfigSource
@@ -79,12 +80,16 @@ class IngestionRunner:
         def work(item: tuple[str, str, str]) -> ObjectResult:
             p, code, s = item
             with caps[(p, s)]:
-                return self.engine.ingest_object(reader, ref, p, code, run_id, retry=retry, restart=restart)
+                try:
+                    return self.engine.ingest_object(reader, ref, p, code, run_id, retry=retry, restart=restart)
+                except Exception as exc:  # noqa: BLE001 - safety net: one object's unexpected error must never abort the others
+                    return ObjectResult(code, "FAILED", error_class="LOGIC", error_code="ACC-4000",
+                                        message=redact(f"{type(exc).__name__}: {exc}"))  # fmt: skip
 
         with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
             results = list(pool.map(work, todo))
         failed = [r for r in results if r.status == "FAILED"]
         status = "SUCCEEDED" if not failed else ("FAILED" if len(failed) == len(results) else "PARTIAL")
-        self.engine.runlog.end_pipeline(run_id, status)
+        self.engine._best_effort("end_pipeline", self.engine.runlog.end_pipeline, run_id, status)
         return RunSummary(run_id, status, ref, results)
 

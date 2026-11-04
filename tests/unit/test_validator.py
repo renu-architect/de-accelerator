@@ -92,6 +92,7 @@ CASES: dict[str, tuple] = {
     "MDV-6001": (mut(SRC, lambda it: it[0].update(connector_type="rest")), {}),
     "MDV-6002": (mut(LM, lambda it: item(it, object="orders", layer="SILVER").update(target_table="gold.orders")), {}),
     "MDV-6003": (mut(COL, lambda it: it.append({"object": "orders", "name": "_hidden", "ordinal": 9})), {}),
+    "MDV-6004": (mut(OBJ, lambda it: item(it, code="orders").update(partition_cols=["OrderID"])), {}),
     "MDV-6010": (mut(SRC, lambda it: it[0]["connection"].pop("password")), {}),
     "MDV-5001": (lambda root: None, {"core_version": "2.0.0"}),
     "MDV-5002": (manifest(metadata_schema_version=3), {}),
@@ -116,7 +117,7 @@ def test_clean_example_has_no_findings():
 
 def test_every_rule_has_a_negative_test():
     assert {r.code for r in RULES} == set(CASES), "rule catalogue and CASES are out of sync"
-    assert len(RULES) >= 64
+    assert len(RULES) >= 65
     assert len({r.code for r in RULES}) == len(RULES)
     assert all(r.layer in {"REFERENTIAL", "SEMANTIC", "POLICY", "COMPAT"} for r in RULES)
 
@@ -191,10 +192,56 @@ def test_connector_specific_checks_cover_options_and_watermark_types(tmp_path):
     edit_items(root, SRC, lambda it: it[0]["options"].update(bogus_option=1))
     edit_items(root, LS, lambda it: item(it, object="orders").update(watermark_type="uuid", read_options={"nope": 1}))
     msgs = " | ".join(f.message for f in run(root).findings if f.code == "MDV-6010")
-    assert "bogus_option" in msgs and "watermark_type 'uuid'" in msgs and "read_options key 'nope'" in msgs
+    assert "bogus_option" in msgs and "watermark_type 'uuid'" in msgs and "read_options key 'nope' is not supported" in msgs
 
 
 def test_hostile_identifiers_are_rejected_in_metadata(tmp_path):
     root = copy_pack(tmp_path)
     edit_items(root, OBJ, lambda it: item(it, code="orders").update(object_name="Orders; DROP TABLE x--"))
     assert any("unsafe or invalid SQL identifier" in f.message for f in run(root).findings if f.code == "MDV-6010")
+
+
+# ---- B1 / B2: everything the validator accepts must be implemented -----------------------------------------------------------
+@pytest.mark.parametrize("name,mutation,needle", [
+    ("cdc load type", lambda root: edit_items(root, LS, lambda it: item(it, object="orders").update(
+        load_type="CDC", cdc_op_column="op", cdc_seq_column="seq", max_replay_age="P3D")), "load_type CDC is not supported"),
+    ("service principal auth", lambda root: edit_items(root, SRC, lambda it: it[0].update(
+        auth_mode="SERVICE_PRINCIPAL", connection={"host": "kv:h", "database": "kv:d", "client_id": "kv:i", "client_secret": "kv:s"})),
+     "auth_mode SERVICE_PRINCIPAL is not supported"),
+    ("managed identity auth", lambda root: edit_items(root, SRC, lambda it: it[0].update(
+        auth_mode="MANAGED_IDENTITY", connection={"host": "kv:h", "database": "kv:d", "service_credential": "kv:c"})),
+     "auth_mode MANAGED_IDENTITY is not supported"),
+    ("ignored read option", lambda root: edit_items(root, LS, lambda it: item(it, object="orders").update(read_options={"source_timezone": "UTC"})),
+     "read_options key 'source_timezone' is not supported"),
+    ("ignored read option max_window", lambda root: edit_items(root, LS, lambda it: item(it, object="orders").update(read_options={"max_window": "P7D"})),
+     "read_options key 'max_window' is not supported"),
+    ("ignored source option isolation_level", lambda root: edit_items(root, SRC, lambda it: it[0]["options"].update(isolation_level="SNAPSHOT")),
+     "unknown source option 'isolation_level'"),
+    ("cdc_op_map without cdc", lambda root: edit_items(root, LS, lambda it: item(it, object="orders").update(cdc_op_map={"I": ["c"]})),
+     "cdc_op_map is only meaningful for CDC"),
+    ("late_arrival_window (B2)", lambda root: edit_items(root, LS, lambda it: item(it, object="orders").update(late_arrival_window="PT5M")),
+     "late_arrival_window is not supported yet"),
+])
+def test_unimplemented_settings_are_rejected_not_ignored(tmp_path, name, mutation, needle):
+    root = copy_pack(tmp_path)
+    mutation(root)
+    report = run(root)
+    assert not report.ok and any(needle in f.message for f in report.findings), f"{name}: {report.to_text()}"
+
+
+@pytest.mark.parametrize("fld,value,needle", [
+    ("write_mode", "OVERWRITE", "write_mode 'OVERWRITE' is not implemented"),
+    ("backfill_from", "2026-01-01", "backfill_from/backfill_to are not implemented"),
+])
+def test_generic_ingestion_settings_rejected(tmp_path, fld, value, needle):
+    root = copy_pack(tmp_path)
+    edit_items(root, LS, lambda it: item(it, object="orders").update({fld: value, **({"backfill_to": "2026-02-01"} if fld == "backfill_from" else {})}))
+    assert any(needle in f.message for f in run(root).findings if f.code == "MDV-6004")
+
+
+def test_supported_configuration_still_validates(tmp_path):
+    """The accepted surface: SECRET auth, FULL/SNAPSHOT/INCREMENTAL, lookback, partitioning, fetchsize/max_connections/TLS options."""
+    root = copy_pack(tmp_path)
+    edit_items(root, SRC, lambda it: it[0]["options"].update(max_connections=4, encrypt=True, trust_server_certificate=False,
+                                                              query_timeout_sec=600, login_timeout_sec=20))  # fmt: skip
+    assert run(root).ok

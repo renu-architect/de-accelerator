@@ -58,3 +58,19 @@ def connector_specific(ctx: ValidationContext) -> Iterator[tuple[str, str]]:
                 triples.append((from_row("object", o), cols, from_row("load_strategy", ls[0])))
         for f in fn(from_row("source", s), triples):
             yield f.message, f.location
+
+
+@rule("MDV-6004", E, L, "ingestion setting accepted by the schema but not implemented")
+def unsupported_ingestion_settings(ctx: ValidationContext) -> Iterator[tuple[str, str]]:
+    """Reject (instead of silently ignoring) Bronze/ingestion settings the engine does not implement yet."""
+    objs = {(o["project_code"], o["code"]): o for o in ctx.rows("object")}
+    for ls in ctx.rows("load_strategy"):
+        o = objs.get((ls["project_code"], ls["object"]))
+        if not o or "BRONZE" not in o["enabled_layers"]:
+            continue
+        if o["partition_cols"]:
+            yield "Bronze partitioning is not implemented: partition_cols would be ignored", ctx.loc("object", o)
+        if ls["write_mode"] not in (None, "", "APPEND"):
+            yield f"write_mode '{ls['write_mode']}' is not implemented (Bronze is append-only history)", ctx.loc("load_strategy", ls, "object")
+        if ls["backfill_from"] or ls["backfill_to"]:
+            yield "backfill_from/backfill_to are not implemented; use `de-accel reprocess` for an explicit window", ctx.loc("load_strategy", ls, "object")

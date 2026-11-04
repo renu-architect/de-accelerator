@@ -51,3 +51,20 @@ Databricks integration is `DATABRICKS_INTEGRATION_PENDING` for every module (no 
 - Tiers: unit (incl. M1), component on real local Delta (Bronze writer 16, ingestion engine 12, crash-recovery matrix 37), integration on real PostgreSQL (6), SQL-generation tests for SQL Server/Azure SQL/PostgreSQL (29)
 - Defects found and fixed by these tests during the increment: lease released with wall-clock instead of engine clock; exhausted transient errors wrongly marked fatal; handled failures kept the lease; migrator could not re-apply a rolled-back migration >= 2; Spark store wrote columns missing from an unmigrated table; `validate-config --env all` ignored the pack's declared environments; **py4j DEBUG logging exposed the JDBC password** (now silenced + Spark option redaction).
 - NOT covered by this evidence: real SQL Server/Azure SQL, Databricks (Key Vault scope, Unity Catalog, job run, drivers, managed identity), Azure DevOps pipeline, scale/performance.
+
+### M2 CLOSURE REVIEW — independent re-run + probes — 2026-11-04
+- Commit reviewed: `e0e3c27` (branch `m2-ingestion`, clean tree equal to remote).
+- Command: `pytest -q tests --cov=de_accelerator`; `ruff check src tests`; `mypy --strict`
+- Result: **335 passed, 0 failed, 0 skipped** (532 s); coverage **93 %** (3,947 statements, 259 missed); ruff clean; mypy clean (72 files).
+- Coverage facts: `cli/main.py` 78 % (all four new CLI commands uncovered), `core/secrets.py` 50 %, `ingestion/windows.py` 78 %, `connectors/jdbc/connector.py` 87 %.
+- Probes (docs/architecture/m2/review_probes/): audit repositories on **real Delta** — manifest, receipt, watermark, run-log PASS; **EventLog.append FAIL (50 junk rows + RuntimeError), LeaseRepo.acquire for another owner FAIL (TypeError)**; runner on Delta audit store: concurrency 1 **FAIL**, concurrency 4 **ConcurrentAppendException (fatal)**; CLI `ingest/batch-status/reprocess/abandon-batch` happy paths work (in-memory audit) with run-id/audit defects.
+- Interpretation: the passing suite does **not** demonstrate that the engine works on a Delta-backed audit store. Real SQL Server, Databricks, Azure DevOps and scale remain unverified.
+- Conclusion: M2 NOT READY to close (see closure review §1, §7).
+
+### M2 CLOSURE — FINAL FULL SUITE after fixes A1–A5, B1–B5 — PASS — 2026-11-04
+- Command: `pytest -q tests --cov=de_accelerator` (also `ruff check src tests` and `mypy --strict`: clean, 72 source files)
+- Environment: Python 3.11.18, pyspark 3.5.9, delta-spark 3.2, local PostgreSQL 16 server, PostgreSQL JDBC 42.7.3; **local only** (no Databricks, no SQL Server, not run on Azure DevOps)
+- Result: **398 passed, 0 failed, 0 skipped** in 1233.75 s; line coverage **95 %** (4,022 statements, 208 missed)
+- New since the closure review (+63 tests): Delta-audit module 10 (engine, lease, timestamps under 3 time zones, crash recovery at 3 points, 4-way parallel x2 with 38 absorbed Delta commit conflicts, CLI); resilience/integrity 6; CLI ingestion 10; timestamp/lease/conflict-retry unit tests 18; validator and dialect rejection tests 12+; secrets 14.
+- Coverage of closure-relevant files: `core/secrets.py` 50→96 %, `cli/main.py` 78→88 %, `ingestion/engine.py` 97 %, `audit/repos.py` 97 %, `metadata/store/spark.py` 93 %, `processing/bronze/writer.py` 96 %; weakest: `ingestion/windows.py` 78 %, `connectors/jdbc/connector.py` 87 %.
+- Still NOT covered by this evidence: real SQL Server/Azure SQL, Databricks (Key Vault scope, Unity Catalog, drivers, job), Azure DevOps pipeline, scale/performance.

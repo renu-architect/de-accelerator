@@ -6,3 +6,7 @@ environment overrides; 60-rule validator; release-versioned insert-only loading 
 and audit history; immutable content-hashed run snapshots; three readers + typed models; read-only `MetadataService`; `de-accel` CLI;
 Azure DevOps pipeline definition (not yet executed on Azure DevOps).
 Not included: any connector, ingestion, medallion, DQ/recon engine, orchestration, semantic generation, documents, Terraform.
+
+## M2 (unreleased — source-to-Bronze ingestion foundation; LOCAL_VERIFIED, SQL Server and Databricks validation PENDING)
+Added: connector interface/registry, mock connector, JDBC connector (SQL Server, Azure SQL, PostgreSQL; FULL/SNAPSHOT/INCREMENTAL; SECRET auth), batch protocol (manifest, events, receipts, conditional watermark, lease, run log), Bronze writer (audit columns, idempotent transactional append, commit and row-count verification, schema evolution), ingestion engine + parallel runner with retry/recovery, CLI `ingest`/`batch-status`/`abandon-batch` (+ experimental `reprocess`), schema v2 migration, 65 validation rules. Store fixes: tz-aware UTC timestamps, bounded retry of Delta commit conflicts.
+Not included: discovery, file connectors, REST, CDC/deletes, service-principal/managed-identity auth, Databricks job completion, real-environment validation.

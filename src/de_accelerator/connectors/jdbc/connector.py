@@ -30,11 +30,12 @@ from de_accelerator.ingestion.windows import incremental_window, ts_str
 from de_accelerator.metadata.findings import Finding
 from de_accelerator.metadata.packs.ids import sha256_hex
 
-ALLOWED_SOURCE_OPTIONS = {"fetchsize", "max_connections", "encrypt", "trust_server_certificate", "query_timeout_sec", "login_timeout_sec",
-                          "isolation_level"}  # fmt: skip
-ALLOWED_READ_OPTIONS = {"query_timeout_sec", "max_window", "max_batches_per_run", "source_timezone", "change_table", "capture_instance"}
-REQUIRED_CONNECTION = {"SECRET": ("host", "database", "user", "password"), "SERVICE_PRINCIPAL": ("host", "database", "client_id", "client_secret"),
-                       "MANAGED_IDENTITY": ("host", "database", "service_credential")}  # fmt: skip
+# Everything the validator accepts is implemented (closure findings H2/H3/B1): unsupported settings are REJECTED, never silently ignored.
+ALLOWED_SOURCE_OPTIONS = {"fetchsize", "max_connections", "encrypt", "trust_server_certificate", "query_timeout_sec", "login_timeout_sec"}
+ALLOWED_READ_OPTIONS: set[str] = set()  # no JDBC read_options are implemented yet (planned: max_window, source_timezone, CDC settings)
+SUPPORTED_AUTH_MODES = ("SECRET",)  # SERVICE_PRINCIPAL / MANAGED_IDENTITY: code paths exist but are unverified/non-functional
+SUPPORTED_LOAD_TYPES = ("FULL", "SNAPSHOT", "INCREMENTAL")  # CDC: planned
+REQUIRED_CONNECTION = {"SECRET": ("host", "database", "user", "password")}
 
 
 def _wm_text(v: Any) -> str | None:
@@ -75,9 +76,11 @@ class JdbcConnector:
         out: list[Finding] = []
         dialect = DIALECTS[source.source_type]
         opts = dict(source.options or {})
-        need = REQUIRED_CONNECTION.get(source.auth_mode, ())
         loc = f"source:{source.code}"
-        for k in need:
+        if source.auth_mode not in SUPPORTED_AUTH_MODES:
+            out.append(Finding("MDV-6010", "ERROR", f"auth_mode {source.auth_mode} is not supported yet (supported: {list(SUPPORTED_AUTH_MODES)}); "
+                               "service-principal and managed-identity access are planned and need verification on a real environment", loc, "SEMANTIC"))  # fmt: skip
+        for k in REQUIRED_CONNECTION.get(source.auth_mode, ()):
             if k not in (source.connection or {}):
                 out.append(Finding("MDV-6010", "ERROR", f"{source.source_type}/{source.auth_mode} requires connection.{k}", loc, "SEMANTIC"))
         for k in set(opts) - ALLOWED_SOURCE_OPTIONS:
@@ -85,13 +88,20 @@ class JdbcConnector:
         for b in bindings:
             ro, st = b.strategy.read_options or {}, b.strategy
             bl = f"load_strategy:{b.code}"
-            for k in set(ro) - ALLOWED_READ_OPTIONS:
-                out.append(Finding("MDV-6010", "ERROR", f"unknown read_options key '{k}' for JDBC", bl, "SEMANTIC"))
-            if st.load_type not in ("FULL", "SNAPSHOT", "INCREMENTAL", "CDC"):
-                out.append(Finding("MDV-6010", "ERROR", f"JDBC does not support load_type {st.load_type}", bl, "SEMANTIC"))
+            for k in sorted(set(ro) - ALLOWED_READ_OPTIONS):
+                out.append(Finding("MDV-6010", "ERROR", f"read_options key '{k}' is not supported for JDBC yet (no read_options are implemented)", bl, "SEMANTIC"))
+            if st.load_type not in SUPPORTED_LOAD_TYPES:
+                out.append(Finding("MDV-6010", "ERROR", f"load_type {st.load_type} is not supported by the JDBC connector yet "
+                                   f"(supported: {list(SUPPORTED_LOAD_TYPES)}; CDC is planned)", bl, "SEMANTIC"))  # fmt: skip
+            if st.cdc_op_map:
+                out.append(Finding("MDV-6010", "ERROR", "cdc_op_map is only meaningful for CDC, which is not implemented", bl, "SEMANTIC"))
             if st.load_type == "INCREMENTAL" and (st.watermark_type or "timestamp") not in dialect.wm_types:
                 out.append(Finding("MDV-6010", "ERROR", f"watermark_type '{st.watermark_type}' not supported for {source.source_type} "
                                    f"(supported: {list(dialect.wm_types)})", bl, "SEMANTIC"))  # fmt: skip
+            if st.load_type == "INCREMENTAL" and st.late_arrival_window:
+                out.append(Finding("MDV-6010", "ERROR", "late_arrival_window is not supported yet: it would be evaluated against the framework clock, "
+                                   "not the source clock, and could skip in-flight transactions. Use lookback_window, or a SQL Server rowversion "
+                                   "watermark (which uses the source's own safe bound)", bl, "SEMANTIC"))  # fmt: skip
             for ident in (b.obj.schema_name, b.obj.object_name, st.watermark_column, st.partition_column):
                 if ident:
                     try:

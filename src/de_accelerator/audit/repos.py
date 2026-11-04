@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from de_accelerator.audit.models import (
@@ -31,6 +31,12 @@ from de_accelerator.audit.models import (
 )
 from de_accelerator.core.errors import WatermarkConflictError
 from de_accelerator.metadata.store.base import TableStore, now_utc
+
+
+def _utc(d: datetime) -> datetime:
+    """Compare instants safely: a naive datetime is UTC by convention in this codebase."""
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)  # noqa: UP017
+
 
 _ORDER = {PLANNED: 1, EXTRACTING: 2, SEALED: 3, BRONZE_WRITTEN: 4, BRONZE_COMMITTED: 5, SRC_WM_COMMITTED: 6, DONE: 7}
 
@@ -70,11 +76,14 @@ class EventLog:
         """Append with a monotonically increasing event_seq (insert-if-absent loop handles concurrent appenders)."""
         for _ in range(50):
             seq = max((e["event_seq"] for e in self.store.select("run_batch_event", {"batch_id": batch_id})), default=0) + 1
+            # `_nonce` makes every append unique, so "did MY insert win this event_seq?" is decided by payload equality - never by
+            # comparing timestamps (stores may round or re-type them) and never by trusting insert counts.
+            body = {**payload, "_nonce": uuid.uuid4().hex}
             row = {"batch_id": batch_id, "event_seq": seq, "event_type": event_type, "stage": stage, "run_id": run_id,
-                   "attempt": attempt, "payload": json.dumps(payload, sort_keys=True, default=str), "event_ts": now_utc()}  # fmt: skip
+                   "attempt": attempt, "payload": json.dumps(body, sort_keys=True, default=str), "event_ts": now_utc()}  # fmt: skip
             self.store.insert_if_absent("run_batch_event", [row], ["batch_id", "event_seq"])
-            got = [e for e in self.store.select("run_batch_event", {"batch_id": batch_id, "event_seq": seq})]
-            if got and got[0]["event_type"] == event_type and got[0]["run_id"] == run_id and got[0]["event_ts"] == row["event_ts"]:
+            got = self.store.select("run_batch_event", {"batch_id": batch_id, "event_seq": seq})
+            if got and got[0]["payload"] == row["payload"]:
                 return seq
         raise RuntimeError("could not allocate event_seq")  # pragma: no cover
 
@@ -182,7 +191,7 @@ class LeaseRepo:
             self.store.update_where(self.TABLE, {"lease_expiry": expiry}, {"object_code": object_code, "stream_key": stream_key,
                                                                          "owner_run_id": owner})  # fmt: skip
             return int(r["epoch"])
-        if r["lease_expiry"] is None or r["lease_expiry"] <= now:
+        if r["lease_expiry"] is None or _utc(r["lease_expiry"]) <= _utc(now):
             n = self.store.update_where(self.TABLE, {"owner_run_id": owner, "epoch": int(r["epoch"]) + 1, "lease_expiry": expiry},
                                         {"object_code": object_code, "stream_key": stream_key, "epoch": r["epoch"]})  # fmt: skip
             return int(r["epoch"]) + 1 if n == 1 else None

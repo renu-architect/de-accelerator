@@ -241,6 +241,10 @@ class IngestionEngine:
                     ver = Verification(None, 0, 0)
                 if ver is None:
                     raise IntegrityError(f"Bronze write for batch {m.batch_id} left no verifiable trace in {target}", batch_id=m.batch_id)
+                if ver.rows_in_commit is not None and wr.rows_observed != ver.rows_in_commit:  # B3: written != read => do not commit
+                    raise IntegrityError(f"Bronze write integrity: {wr.rows_observed} rows were read but the Delta commit holds "
+                                         f"{ver.rows_in_commit} (batch {m.batch_id})", batch_id=m.batch_id,
+                                         observed=wr.rows_observed, committed=ver.rows_in_commit)  # fmt: skip
                 rows_read = wr.rows_observed
             rows_written = ver.rows_in_commit if ver.rows_in_commit is not None else ver.rows_counted
             f.hit("CP06_before_receipt")
@@ -274,21 +278,38 @@ class IngestionEngine:
         return any(e["event_type"] == event_type for e in self.events.events(batch_id))
 
     def _record_failure(self, object_code: str, stream: str, run_id: str, attempt: int, exc: AcceleratorError, msg: str, retryable: bool) -> None:
-        m = open_batch(self.manifests, self.events, object_code, stream)
-        if m is not None:
-            self.events.append(m.batch_id, FAILED_RETRYABLE if retryable else FAILED_FATAL, run_id=run_id, attempt=attempt,
-                               error_class=exc.error_class, code=exc.code, message=msg[:500])  # fmt: skip
-        self.runlog.error(run_id, object_code, exc.error_class, exc.code, msg, {"attempt": attempt, "stream": stream})
-        if not isinstance(exc, BatchBusyError):  # a handled failure frees the lease; a crash leaves it to expire (TTL)
-            self.leases.release(object_code, stream, run_id, self.clock.now())
+        """Best-effort: recording a failure must never raise (closure finding C4). Each step is guarded separately so one audit
+        write failing does not prevent the others, and never aborts the run."""
         log.warning("object %s attempt %s failed (%s): %s", object_code, attempt, exc.error_class, msg)
 
-    def _finish(self, run_id: str, res: ObjectResult, attempts: list[tuple[int, str | None, Any, Any, str | None]]) -> str:
-        oid = self.runlog.object_result(run_id, res.object_code, res.status, res.attempts, res.rows_read, res.rows_written, 0,
-                                        res.duration_s, res.error_class)  # fmt: skip
-        for n, err, s, e, reason in attempts:
-            self.runlog.attempt(oid, n, err, s, e, reason)
-        return oid
+        def mark() -> None:
+            m = open_batch(self.manifests, self.events, object_code, stream)
+            if m is not None:
+                self.events.append(m.batch_id, FAILED_RETRYABLE if retryable else FAILED_FATAL, run_id=run_id, attempt=attempt,
+                                   error_class=exc.error_class, code=exc.code, message=msg[:500])  # fmt: skip
+
+        self._best_effort("failure event", mark)
+        self._best_effort("run_error", self.runlog.error, run_id, object_code, exc.error_class, exc.code, msg,
+                          {"attempt": attempt, "stream": stream})  # fmt: skip
+        if not isinstance(exc, BatchBusyError):  # a handled failure frees the lease; a crash leaves it to expire (TTL)
+            self._best_effort("lease release", self.leases.release, object_code, stream, run_id, self.clock.now())
+
+    def _best_effort(self, what: str, fn: Callable[..., Any], *args: Any) -> Any:
+        try:
+            return fn(*args)
+        except Exception as audit_exc:  # noqa: BLE001 - audit/logging problems must not change the outcome of the object
+            log.error("audit write failed (%s): %s", what, redact(f"{type(audit_exc).__name__}: {audit_exc}"))
+            return None
+
+    def _finish(self, run_id: str, res: ObjectResult, attempts: list[tuple[int, str | None, Any, Any, str | None]]) -> str | None:
+        """Record the per-object result and attempts. Best-effort (C4): data is already committed / the failure already known,
+        so an audit problem here is logged, not propagated."""
+        oid = self._best_effort("run_object", self.runlog.object_result, run_id, res.object_code, res.status, res.attempts,
+                                res.rows_read, res.rows_written, 0, res.duration_s, res.error_class)  # fmt: skip
+        if oid is not None:
+            for n, err, s, e, reason in attempts:
+                self._best_effort("run_attempt", self.runlog.attempt, oid, n, err, s, e, reason)
+        return oid  # type: ignore[no-any-return]
 
     # ---- operator actions -----------------------------------------------------------------------------------------------
     def abandon_batch(self, object_code: str, stream: str, reason: str, actor: str) -> str:

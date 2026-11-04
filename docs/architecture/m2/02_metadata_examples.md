@@ -2,6 +2,8 @@
 
 All examples are in `examples/ingest_examples_pack/` (a complete pack for client `acme`, synthetic). **Validation evidence:** with the two *proposed* fields (`read_options`, `cdc_op_map`, CR-M2-01) removed, the pack passes the existing M1 validator for DEV, QA and PROD with 0 errors and 0 warnings (the first draft was rejected by rule MDV-2005 — key column not declared — which is exactly the safety net the rules provide). The two proposed fields cannot be validated until CR-M2-01 is approved and implemented.
 
+> **Closure note (2026-11-04):** the examples below are **design targets**. The validator currently **rejects** CDC, `SERVICE_PRINCIPAL`/`MANAGED_IDENTITY` auth, every `read_options` key, `cdc_op_map`, `late_arrival_window`, `partition_cols`, `write_mode` ≠ APPEND and `backfill_from/to` for JDBC sources, because none of them is implemented yet. Only SECRET-auth JDBC sources with FULL/SNAPSHOT/INCREMENTAL loads (and the file/REST sources, for which no connector exists yet) are accepted today. The runnable examples are `metadata/examples/sqlserver_demo_pack/` and `metadata/examples/acme_pack/`.
+
 ## 1. Which metadata drives what
 | Need | Where (M1 entity.field) | Status |
 |---|---|---|

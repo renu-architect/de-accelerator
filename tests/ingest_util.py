@@ -74,7 +74,7 @@ def write_pack(root: Path, objects: list[dict[str, Any]], source: dict[str, Any]
 
 @dataclass
 class World:
-    store: InMemoryTableStore
+    store: Any
     spark: Any
     clock: ManualClock
     source: MockSource
@@ -105,9 +105,12 @@ class World:
 
 
 def build_world(tmp_path: Path, spark: Any, objects: list[dict[str, Any]], source_tables: dict[str, tuple[str, list[dict[str, Any]]]],
-                source: dict[str, Any] | None = None, secrets: dict[str, str] | None = None) -> World:
-    store = InMemoryTableStore()
-    Migrator(store, MIGRATIONS).apply()
+                source: dict[str, Any] | None = None, secrets: dict[str, str] | None = None, store: Any = None,
+                wrap: Any = None) -> World:
+    """store: use an existing, already-migrated store (e.g. the Delta audit store); wrap: wrap the final store (fault injection)."""
+    if store is None:
+        store = InMemoryTableStore()
+        Migrator(store, MIGRATIONS).apply()
     pack = write_pack(tmp_path, objects, source)
     report, bundle = validate_pack(pack, "DEV", deployed_schema_version=2)
     assert report.ok, report.to_text()
@@ -119,7 +122,7 @@ def build_world(tmp_path: Path, spark: Any, objects: list[dict[str, Any]], sourc
     if source is None:
         MOCK_SOURCES["erp"] = src
     clock = ManualClock(datetime(2026, 11, 3, 12, 0, tzinfo=timezone.utc))  # noqa: UP017
-    w = World(store, spark, clock, src, pack, None, None)  # type: ignore[arg-type]
+    w = World(wrap(store) if wrap else store, spark, clock, src, pack, None, None)  # type: ignore[arg-type]
     w.secrets = secrets or {}
     w.new_engine()
     return w

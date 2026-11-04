@@ -12,6 +12,7 @@ from pyspark.sql.types import StringType, StructType
 
 from de_accelerator.core.errors import IntegrityError, SchemaChangeError, TransientSourceError
 from de_accelerator.core.naming import qualified_table
+from de_accelerator.metadata.store.spark import is_delta_conflict
 from de_accelerator.processing.bronze.audit_columns import AuditValues, add_audit_columns, check_no_reserved, q, raw_columns
 from de_accelerator.processing.bronze.schema_policy import SchemaDecision, decide
 
@@ -93,8 +94,7 @@ class BronzeWriter:
         try:
             w.saveAsTable(fq)
         except Exception as exc:
-            name = type(exc).__name__ + " " + str(exc)
-            if "ConcurrentAppend" in name or "ConcurrentModification" in name or "ConcurrentDelete" in name or "MetadataChanged" in name:
+            if is_delta_conflict(exc):
                 raise TransientSourceError(f"Delta commit conflict writing {fq}: {exc}") from exc
             raise
         rows = int(obs.get.get("rows", 0))

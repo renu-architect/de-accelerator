@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Mapping, Sequence
+import random
+import time
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from de_accelerator.core.errors import StoreError
+from de_accelerator.core.errors import StoreConflictError, StoreError
+from de_accelerator.core.logging import get_logger
 from de_accelerator.core.naming import qualified_table
 from de_accelerator.metadata.schema.tables import table_map
 from de_accelerator.metadata.schema.tablespec import Col, TableSpec, render_add_columns, render_create, render_drop
@@ -14,6 +17,8 @@ from de_accelerator.metadata.store.base import Row
 
 if TYPE_CHECKING:  # pragma: no cover
     from pyspark.sql import SparkSession
+
+from pyspark.sql import functions as F  # noqa: E402  (pyspark is an optional extra; this module is only imported when Spark is used)
 
 
 def build_local_spark(warehouse_dir: str, app: str = "de-accelerator-local", extra_packages: Sequence[str] = ()) -> SparkSession:
@@ -49,6 +54,19 @@ _SPARK_TYPES = {"str": "string", "int": "bigint", "float": "double", "bool": "bo
                 "json": "string", "ts": "timestamp", "bin": "binary"}  # fmt: skip
 
 
+log = get_logger("store")
+_CONFLICT_MARKERS = ("ConcurrentAppendException", "ConcurrentDeleteReadException", "ConcurrentDeleteDeleteException",
+                     "ConcurrentTransactionException", "MetadataChangedException", "ProtocolChangedException",
+                     "DELTA_CONCURRENT_", "DELTA_METADATA_CHANGED")  # fmt: skip
+_EPOCH = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)  # noqa: UP017
+
+
+def is_delta_conflict(exc: BaseException) -> bool:
+    """True for Delta optimistic-concurrency failures (the commit did NOT happen; retrying is safe)."""
+    text = f"{type(exc).__name__} {exc}"
+    return any(m in text for m in _CONFLICT_MARKERS)
+
+
 def _lit(v: Any) -> str:
     if v is None:
         return "NULL"
@@ -57,7 +75,8 @@ def _lit(v: Any) -> str:
     if isinstance(v, int | float):
         return repr(v)
     if isinstance(v, dt.datetime):
-        return f"TIMESTAMP '{v.astimezone(dt.timezone.utc):%Y-%m-%d %H:%M:%S.%f}'"  # noqa: UP017
+        aware = v if v.tzinfo else v.replace(tzinfo=dt.timezone.utc)  # noqa: UP017  naive values are UTC by convention
+        return f"TIMESTAMP '{aware.astimezone(dt.timezone.utc):%Y-%m-%d %H:%M:%S.%f}'"  # noqa: UP017
     return "'" + str(v).replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
@@ -68,11 +87,30 @@ def _cond(where: Mapping[str, Any] | None) -> str:
 
 
 class SparkDeltaTableStore:
-    def __init__(self, spark: SparkSession, catalog: str | None = None, flavor: str = "LOCAL") -> None:
+    def __init__(self, spark: SparkSession, catalog: str | None = None, flavor: str = "LOCAL", max_conflict_retries: int = 10,
+                 sleep: Callable[[float], None] = time.sleep) -> None:  # fmt: skip
         self.spark = spark
         self.catalog = catalog
         self.flavor = flavor
         self._specs = table_map()
+        self.max_conflict_retries = max_conflict_retries
+        self._sleep = sleep
+
+    def _retry(self, fn: Callable[[], Any], what: str) -> Any:
+        """Run a write; on a Delta commit conflict wait (jittered exponential backoff) and retry.
+        A conflict means the commit did NOT happen, so every store write (append, MERGE-if-absent, conditional UPDATE)
+        is safe to repeat."""
+        for attempt in range(self.max_conflict_retries + 1):
+            try:
+                return fn()
+            except Exception as exc:
+                if not is_delta_conflict(exc):
+                    raise
+                if attempt == self.max_conflict_retries:
+                    raise StoreConflictError(f"{what}: Delta commit conflict persisted after {attempt + 1} attempts") from exc
+                log.info("Delta commit conflict on %s (attempt %d/%d): retrying", what, attempt + 1, self.max_conflict_retries)
+                self._sleep(min(2.0, 0.05 * (2**attempt)) * (0.5 + random.random()))
+        raise AssertionError("unreachable")  # pragma: no cover
 
     # --- naming / specs
     def _spec(self, table: str) -> TableSpec:
@@ -127,7 +165,8 @@ class SparkDeltaTableStore:
         if not rows:
             return 0
         spec = self._spec(table)
-        self._df(spec, rows).write.format("delta").mode("append").saveAsTable(self._fq(table))
+        fq = self._fq(table)
+        self._retry(lambda: self._df(spec, rows).write.format("delta").mode("append").saveAsTable(fq), f"insert {table}")
         return len(rows)
 
     def insert_if_absent(self, table: str, rows: Sequence[Row], key_cols: Sequence[str]) -> int:
@@ -142,33 +181,46 @@ class SparkDeltaTableStore:
         src = self._df(spec, rows).dropDuplicates(list(key_cols))
         cond = " AND ".join(f"t.`{k}` <=> s.`{k}`" for k in key_cols)
         target = DeltaTable.forName(self.spark, self._fq(table))
-        before = target.history(1).collect()[0]["version"]
-        target.alias("t").merge(src.alias("s"), cond).whenNotMatchedInsertAll().execute()
-        hist = target.history(1).collect()[0]
-        if hist["version"] == before:  # a MERGE that changes nothing creates no commit
-            return 0
-        return int((hist["operationMetrics"] or {}).get("numTargetRowsInserted", 0))
+
+        def merge() -> int:
+            before = target.history(1).collect()[0]["version"]
+            target.alias("t").merge(src.alias("s"), cond).whenNotMatchedInsertAll().execute()
+            hist = target.history(1).collect()[0]
+            if hist["version"] == before:  # a MERGE that changes nothing creates no commit
+                return 0
+            return int((hist["operationMetrics"] or {}).get("numTargetRowsInserted", 0))
+
+        return int(self._retry(merge, f"insert_if_absent {table}"))  # advisory: callers re-read instead of trusting the count
 
     def select(self, table: str, where: Mapping[str, Any] | None = None) -> list[Row]:
+        """Rows as dicts. TIMESTAMP columns are returned as timezone-aware UTC datetimes, rebuilt from epoch microseconds,
+        so results never depend on the Python process time zone (pyspark's own conversion yields naive local datetimes)."""
+        spec = self._spec(table)
+        ts_cols = {c.name.lower() for c in spec.columns if c.type == "ts"}
         df = self.spark.table(self._fq(table))
         if where:
             df = df.where(_cond(where))
+        df = df.select(*[F.expr(f"unix_micros(`{c}`)").alias(c) if c.lower() in ts_cols else F.col(f"`{c}`") for c in df.columns])
         out: list[Row] = []
         for r in df.collect():
             d = r.asDict(recursive=True)
             for k, v in d.items():
                 if isinstance(v, bytearray):
                     d[k] = bytes(v)
+                elif k.lower() in ts_cols and v is not None:
+                    d[k] = _EPOCH + dt.timedelta(microseconds=int(v))
             out.append(d)
         return out
 
     def update_where(self, table: str, values: Mapping[str, Any], where: Mapping[str, Any]) -> int:
         sets = ", ".join(f"`{k}` = {_lit(v)}" for k, v in values.items())
-        res = self.spark.sql(f"UPDATE {self._fq(table)} SET {sets} WHERE {_cond(where)}").collect()
+        sql = f"UPDATE {self._fq(table)} SET {sets} WHERE {_cond(where)}"
+        res = self._retry(lambda: self.spark.sql(sql).collect(), f"update {table}")
         return int(res[0]["num_affected_rows"]) if res else 0
 
     def delete_where(self, table: str, where: Mapping[str, Any]) -> int:
-        res = self.spark.sql(f"DELETE FROM {self._fq(table)} WHERE {_cond(where)}").collect()
+        sql = f"DELETE FROM {self._fq(table)} WHERE {_cond(where)}"
+        res = self._retry(lambda: self.spark.sql(sql).collect(), f"delete {table}")
         return int(res[0]["num_affected_rows"]) if res else 0
 
     def count(self, table: str, where: Mapping[str, Any] | None = None) -> int:

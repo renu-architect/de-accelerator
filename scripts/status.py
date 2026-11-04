@@ -8,25 +8,29 @@ HEADER = """# Implementation Status (source of truth)
 - `PRODUCTION_READY` — LOCAL_VERIFIED + Databricks integration passed + security review + user approval. **Nothing is production-ready.**
 Other states: `DESIGNED` (docs only) · `DDL_ONLY` (schema defined, no logic) · `IN_PROGRESS`.
 
-Baseline: Rev 1 approved (C1, C3 and decisions in docs 07/13). Current milestone: **M2 (source-to-Bronze ingestion) IN PROGRESS** — M2.1 core and the M2.2 JDBC slice are implemented and LOCAL_VERIFIED (see rows); M1 is closed. Databricks integration, real SQL Server execution, Azure DevOps pipeline execution and scale benchmark are PENDING.
+Baseline: Rev 1 approved (C1, C3 and decisions in docs 07/13). Current milestone: **M2 (source-to-Bronze) — closure fixes done; awaiting the user's closure approval.** 398 tests pass (95% coverage; ruff and strict mypy clean). Real SQL Server, Databricks, Azure DevOps and scale validation are PENDING. M3 not started.
 
 | Module / work package | Implementation | Verification | Databricks | Notes |
 |---|---|---|---|---|
 """
 ROWS = [
-    ("**M1** metadata engine (core, schema v1, packs, validator, releases, snapshots, readers, CLI)", "IMPLEMENTED", "LOCAL_VERIFIED (closed; 182 tests at close)", "DATABRICKS_INTEGRATION_PENDING", "8 schemas / 53 tables / 22 schema-only; `docs` schema = planned future capability"),
-    ("M2 CR-M2-01: schema v2 (migration 0002), loader schema check, connector validation hook + rules MDV-6001/6002/6003/6010, `--env all` fix, Spark store tolerates unmigrated nullable columns, migrator re-apply fix", "IMPLEMENTED", "LOCAL_VERIFIED", "DATABRICKS_INTEGRATION_PENDING", "M1 code touched additively; migration 0001 checksum unchanged (pinned test)"),
-    ("M2.1 core: connector interface + registry, secrets/clock/fault injection, audit repositories (manifest, events, receipts, watermark, lease, run log)", "IMPLEMENTED", "LOCAL_VERIFIED", "DATABRICKS_INTEGRATION_PENDING", ""),
-    ("M2.1 Bronze writer (audit columns, schema evolution, idempotent transactional append, commit verification)", "IMPLEMENTED", "LOCAL_VERIFIED (real local Delta)", "DATABRICKS_INTEGRATION_PENDING", "Delta type widening unavailable locally: falls back to a clear error (pending Databricks)"),
-    ("M2.1 ingestion engine + runner + retry/recovery; mock connector; CLI ingest / batch-status / abandon-batch / reprocess", "IMPLEMENTED", "LOCAL_VERIFIED (crash matrix: 10 points x FULL/INCREMENTAL/SNAPSHOT + double fault + races)", "DATABRICKS_INTEGRATION_PENDING", "Empty plans create no batch (refinement of doc 04)"),
-    ("M2.2 JDBC connector: PostgreSQL", "IMPLEMENTED", "LOCAL_VERIFIED (**real PostgreSQL 16 server**: full, incremental + updates, partitioned reads, crash recovery, auth failure, connection refused, secret canary)", "DATABRICKS_INTEGRATION_PENDING", ""),
-    ("M2.2 JDBC connector: SQL Server, Azure SQL", "IMPLEMENTED", "UNIT-TESTED ONLY (exact T-SQL generation, TLS URLs, safe bounds, validation). **Not executed against a real SQL Server** (none available)", "DATABRICKS_INTEGRATION_PENDING", "Azure SQL managed-identity token path is Databricks-only and unverified"),
-    ("M2.2 demo: SQL Server demo pack, quickstart, Databricks job template, wheel build", "IMPLEMENTED (files)", "wheel builds; pack validates; job template NOT executed", "DATABRICKS_INTEGRATION_PENDING", "deployment/databricks/databricks.yml, docs/guides/QUICKSTART_SQLSERVER_TO_BRONZE.md"),
-    ("M2.2 source schema discovery + metadata auto-generation (`de-accel discover`)", "NOT_STARTED", "—", "—", "planned next"),
-    ("M2.3 connectors: CSV, JSON, Parquet (file incremental + tracking), REST (pagination, landing)", "NOT_STARTED", "—", "—", "designed (docs/architecture/m2)"),
-    ("M2.4 CDC + deletes + retention-gap policies, late-arriving handling beyond lookback, scale/perf tests", "NOT_STARTED", "—", "—", "designed"),
+    ("**M1** metadata engine (core, schema v1, packs, validator, releases, snapshots, readers, CLI)", "IMPLEMENTED", "LOCAL_VERIFIED (closed)", "DATABRICKS_INTEGRATION_PENDING", "8 schemas / 53 tables / 22 schema-only; `docs` schema = planned future capability"),
+    ("M2 schema v2 (migration 0002), loader schema check, validator hook + rules 6001/6002/6003/6004/6010 (65 rules), `--env all`, migrator re-apply", "IMPLEMENTED", "LOCAL_VERIFIED (incl. in-place v1->v2 on real Delta)", "DATABRICKS_INTEGRATION_PENDING", "migration 0001 checksum unchanged"),
+    ("M2 Delta store fixes: UTC-aware timestamps (epoch micros), bounded retry of Delta commit conflicts (`StoreConflictError`)", "IMPLEMENTED", "LOCAL_VERIFIED (4-way parallel run absorbed 38 conflicts)", "DATABRICKS_INTEGRATION_PENDING", "M1 store touched (additive); timestamps from Delta are now tz-aware"),
+    ("M2 connector interface, registry, mock connector, secrets/clock/faults", "IMPLEMENTED", "LOCAL_VERIFIED (secrets 96% covered incl. PROD guard; no shared connector contract suite)", "DATABRICKS_INTEGRATION_PENDING", "Databricks secret provider tested with a fake dbutils only"),
+    ("M2 Bronze writer (audit columns, idempotent append, commit verification, observed-vs-commit integrity check, schema evolution)", "IMPLEMENTED", "LOCAL_VERIFIED (real local Delta)", "DATABRICKS_INTEGRATION_PENDING", "type widening unavailable locally"),
+    ("M2 batch protocol (manifest, events, receipts, watermark, lease, run log) + ingestion engine + runner (retry, recovery, duplicate prevention, parallelism)", "IMPLEMENTED", "LOCAL_VERIFIED on in-memory AND real local Delta audit stores (crash matrix 37; Delta: recovery at 3 points, 4-way parallel x2)", "DATABRICKS_INTEGRATION_PENDING", "closure fixes A1-A5 done"),
+    ("M2 audit-outage resilience (failure path never aborts a run) + runner safety net", "IMPLEMENTED", "LOCAL_VERIFIED", "—", "A4"),
+    ("M2 JDBC connector: PostgreSQL (SECRET auth; FULL/SNAPSHOT/INCREMENTAL)", "IMPLEMENTED", "INTEGRATION TESTED on a real PostgreSQL 16 server (audit store in-memory)", "DATABRICKS_INTEGRATION_PENDING", ""),
+    ("M2 JDBC connector: SQL Server, Azure SQL (SECRET auth; FULL/SNAPSHOT/INCREMENTAL)", "IMPLEMENTED", "UNIT-TESTED ONLY (exact SQL strings, validation). NOT executed on a real SQL Server", "PENDING EXTERNAL VALIDATION", ""),
+    ("M2 SERVICE_PRINCIPAL / MANAGED_IDENTITY auth for JDBC", "NOT IMPLEMENTED", "rejected by the validator (code path unverified)", "PENDING EXTERNAL VALIDATION", "needs a real Azure/Databricks environment"),
+    ("M2 CLI ingest / batch-status / abandon-batch", "IMPLEMENTED", "LOCAL_VERIFIED (in-memory and Delta audit stores)", "DATABRICKS_INTEGRATION_PENDING", ""),
+    ("M2 CLI reprocess", "IMPLEMENTED -- EXPERIMENTAL", "UNTESTED in the suite (happy path confirmed by a probe); constant run id, no run_pipeline row, reason not audited", "—", "deferred (B7)"),
+    ("M2 demo pack, quickstart, Databricks job template, wheel", "IMPLEMENTED (files)", "wheel builds; pack validates; template NOT validated and incomplete; demo never run on SQL Server/Databricks", "DATABRICKS_INTEGRATION_PENDING", "docs/guides/QUICKSTART_SQLSERVER_TO_BRONZE.md"),
+    ("M2 schema discovery + metadata auto-generation", "NOT IMPLEMENTED", "—", "—", "deferred"),
+    ("M2 CSV / JSON / Parquet, REST, CDC + deletes, late-arrival beyond lookback, source-count reconciliation, backfill chunking", "NOT IMPLEMENTED", "—", "—", "deferred; rejected/absent in the validator"),
     ("`docs` schema + `docs.*` tables (ADR-0018 #6)", "PLANNED (future; not implemented by decision)", "—", "—", "Code stays at 8 schemas"),
-    ("remaining: processing (silver/gold) / quality / reconciliation / orchestration planner / semantic / documents / monitoring / security / IaC", "DESIGNED", "—", "—", "not started"),
+    ("remaining: Silver/Gold, quality, reconciliation, orchestration planner, semantic, documents, monitoring, security, IaC", "DESIGNED", "—", "—", "M3 not started"),
 ]
 if __name__ == "__main__":
     body = "".join("| " + " | ".join(r) + " |\n" for r in ROWS)

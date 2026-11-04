@@ -72,6 +72,13 @@ class NotFoundError(MetadataError):
     code = "ACC-2008"
 
 
+class StoreConflictError(StoreError):
+    """Delta optimistic-concurrency conflict that persisted after bounded retries: safe to retry later."""
+
+    code = "ACC-3001"
+    error_class = "TRANSIENT"
+
+
 # ---- ingestion (M2) -------------------------------------------------------------------------------------------------
 class IngestionError(AcceleratorError):
     code = "ACC-4000"
