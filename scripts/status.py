@@ -8,7 +8,7 @@ HEADER = """# Implementation Status (source of truth)
 - `PRODUCTION_READY` — LOCAL_VERIFIED + Databricks integration passed + security review + user approval. **Nothing is production-ready.**
 Other states: `DESIGNED` (docs only) · `DDL_ONLY` (schema defined, no logic) · `IN_PROGRESS`.
 
-Baseline: Rev 1 approved (C1, C3 and decisions in docs 07/13). Current milestone: **M3 (Bronze->Silver->Gold transformation) — DESIGN PROPOSED, no code.** M1 and **M2 are CLOSED as LOCAL_VERIFIED** (M2: 398 tests, 95% coverage, ruff and strict mypy clean, commit 51270e6). Pending external validation: real SQL Server / Azure SQL, Databricks / Unity Catalog, Azure DevOps, scale. Production readiness is NOT established for any module.
+Baseline: Rev 1 approved (C1, C3 and decisions in docs 07/13). Current milestone: **M3 (Bronze->Silver->Gold transformation) — design APPROVED, implementation IN PROGRESS on branch m3-design (not yet verified).** M1 and **M2 are CLOSED as LOCAL_VERIFIED** (M2: 398 tests, 95% coverage, ruff and strict mypy clean, commit 51270e6). Pending external validation: real SQL Server / Azure SQL, Databricks / Unity Catalog, Azure DevOps, scale. Production readiness is NOT established for any module.
 
 | Module / work package | Implementation | Verification | Databricks | Notes |
 |---|---|---|---|---|
@@ -30,7 +30,7 @@ ROWS = [
     ("M2 schema discovery + metadata auto-generation", "NOT IMPLEMENTED", "—", "—", "deferred"),
     ("M2 CSV / JSON / Parquet, REST, CDC + deletes, late-arrival beyond lookback, source-count reconciliation, backfill chunking", "NOT IMPLEMENTED", "—", "—", "deferred; rejected/absent in the validator"),
     ("`docs` schema + `docs.*` tables (ADR-0018 #6)", "PLANNED (future; not implemented by decision)", "—", "—", "Code stays at 8 schemas"),
-    ("**M3** transformation engine: Bronze->Silver (cleansing, dedupe, keys, SCD1/SCD2, independent layer cursors) and Silver->Gold", "DESIGN PROPOSED (docs/architecture/m3, ADR-0020) — awaiting approval", "—", "—", "no M3 code exists"),
+    ("**M3** transformation engine: Bronze->Silver (cleansing, dedupe, keys, SCD1/SCD2, independent layer cursors) and Silver->Gold", "IN PROGRESS (design approved; docs/architecture/m3, ADR-0020)", "—", "—", "implementation phases P1-P5 pending; nothing verified yet"),
     ("remaining: quality, reconciliation, orchestration planner, semantic, documents, monitoring, security, IaC", "DESIGNED", "—", "—", "not started"),
 ]
 if __name__ == "__main__":

@@ -57,3 +57,12 @@ Full detail, evidence and fix plan: `docs/architecture/m2/07_M2_closure_review.m
 - Not implemented (planned M2.2/M2.3/M2.4 increments): discovery and metadata auto-generation, CSV/JSON/Parquet, REST, CDC and deletes, backfill chunking, source-count reconciliation.
 
 **M2 is closed as LOCAL_VERIFIED (2026-11-04).** Every item above under "Still pending external validation" and "Deferred by decision" remains open and is not covered by the closure.
+
+## M3 (transformation) — approved limitations (2026-11-04; implementation in progress, nothing verified yet)
+- **Delete-by-absence is deferred to M4**: deletes reach Silver only from Bronze `_op_type='D'` rows, and no implemented connector produces them (CDC is future). Source deletes from JDBC sources are **not** reflected in Silver. Reason: extract completeness cannot be proven (no consistent-snapshot control in M2, partitioned reads only tested on static data, hidden source filters undetectable).
+- Rejects are pointers `(src_batch_id, _row_hash)`; `_row_hash` is M2's 64-bit un-keyed hash, **not** a privacy guarantee: reject tables are restricted pseudonymous data (access, retention and erasure are external/future controls).
+- Operator action is limited to `transform-replan`; the actor name is unauthenticated (like M2 `abandon-batch` and M1 `--approved-by`). No data-skip or approval workflow (M4).
+- Gold KEY_MERGE does not remove stale rows (use FULL). Gold re-runs after non-data Silver commits (OPTIMIZE/VACUUM/ADD COLUMN). Gold CDF, built-ins, `expr`/regex/derived columns, automated rebuild, advanced schema evolution, DQ scoring and reconciliation engine are M4.
+- Temporary duplication of M2 retry/runner logic inside M3 (≈65 lines), consolidation tracked as `M4-CONSOLIDATE-01`.
+- Gold SQL/PySpark are code, not metadata: integrity = checksum + path safety; the keyword tokenizer is defence in depth. Metadata-table write restrictions, branch policy and job-principal grants are external controls and not validated.
+- All M3 behaviour is local-only evidence; Databricks/Unity Catalog, Azure DevOps, real SQL Server and scale remain `DATABRICKS_INTEGRATION_PENDING`.

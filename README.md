@@ -9,7 +9,7 @@ Only `docs/status/IMPLEMENTATION_STATUS.md` states what is implemented. Evidence
 |---|---|---|
 | M1 | Metadata engine: YAML packs, validator, release-versioned Delta metadata, immutable snapshots, CLI | **CLOSED — `LOCAL_VERIFIED`** |
 | M2 | Ingestion foundation: connector interface, JDBC connector (SQL Server, Azure SQL, PostgreSQL), batch protocol, Bronze Delta ingestion, runner, CLI | **CLOSED — `LOCAL_VERIFIED`** (398 tests, 95 % coverage, ruff + strict mypy clean, commit `51270e6`, branch `m2-ingestion`) |
-| M3 | Bronze → Silver → Gold transformation (SCD1/SCD2, cleansing, dedupe, incremental, recovery) | **PLANNING — design proposed, awaiting approval; no M3 code** (`docs/architecture/m3/`, ADR-0020) |
+| M3 | Bronze → Silver → Gold transformation (SCD1/SCD2, cleansing, dedupe, incremental, recovery) | **IN PROGRESS** on branch `m3-design` — design approved 2026-11-04 (`docs/architecture/m3/`, ADR-0020); not yet verified |
 | M4+ | DQ/reconciliation, orchestration planner, semantic layer, documents | not started |
 
 ### What "closed as LOCAL_VERIFIED" means for M1/M2
@@ -38,4 +38,4 @@ de-accel --bootstrap bootstrap.yaml ingest --execution <name>      # source -> B
 SQL Server → Bronze walkthrough (needs a reachable source): `docs/guides/QUICKSTART_SQLSERVER_TO_BRONZE.md`. All sample data is synthetic.
 
 ## Documentation map
-Architecture `docs/architecture/` (M2 in `m2/`, M3 proposal in `m3/`) · decisions `docs/adr/` · module specs `docs/architecture/modules/` · status `docs/status/`.
+Architecture `docs/architecture/` (M2 in `m2/`, M3 design in `m3/`) · decisions `docs/adr/` · module specs `docs/architecture/modules/` · status `docs/status/`.
