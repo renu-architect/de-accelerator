@@ -3,7 +3,17 @@
 Reviewed commit: `e0e3c27` on branch `m2-ingestion` (clean tree, equals remote). Date: 2026-11-04. Scope: M2.1 (core ingestion engine) and the M2.2 JDBC slice.
 Method: code review against `docs/architecture/m2/00–06` and ADR-0019; full automated test run; read-only probes (`review_probes/`) for the paths the test suite does not exercise.
 
-## 0. Resolution (post-fix, 2026-11-04) — read this first
+## M2 OFFICIALLY CLOSED — status `LOCAL_VERIFIED` (user decision, 2026-11-04; commit `51270e6`)
+**M2 covers:** the ingestion foundation, the JDBC connector (SQL Server, Azure SQL, PostgreSQL; SECRET auth; FULL / SNAPSHOT / INCREMENTAL), the batch execution engine (manifest, receipts, conditional watermark, lease, retry, recovery, parallel runner) and Bronze Delta ingestion.
+**Closed as `LOCAL_VERIFIED` only.** Validation basis: 398 tests passing locally (95 % coverage; ruff and strict mypy clean), including the engine on a Delta-backed audit store, crash recovery, a four-way parallel run, and a real PostgreSQL server.
+**Explicitly NOT established:**
+- Real SQL Server / Azure SQL integration — **pending** (SQL Server SQL generation is unit-tested only; never executed against an instance).
+- Real Databricks / Unity Catalog validation — **pending** (Key Vault secret scope, drivers, job template, Delta behaviour on the runtime; none run in a workspace).
+- **Production readiness has not been established.** Nothing is `PRODUCTION_READY`.
+- Discovery and metadata auto-generation, file connectors (CSV/JSON/Parquet), REST, CDC and deletes remain **future capabilities** (not implemented; the validator rejects the corresponding settings).
+- Deferred defects/debt B6–B12 are tracked in `docs/status/KNOWN_LIMITATIONS.md`.
+
+## 0. Resolution (post-fix, 2026-11-04)
 
 Scope approved by the user: the five critical fixes (A1–A5), five essential items (B1–B5), documentation and this report. Everything else (B6–B12, discovery, file connectors, REST, CDC and deletes, advanced orchestration) is **deferred**. M2 closure covers the implemented ingestion foundation, the JDBC connector and Bronze Delta ingestion (M2.1 + the implemented JDBC portion of M2.2).
 
@@ -47,8 +57,8 @@ M1 code touched by the fixes (all necessary, all additive in behaviour): `metada
 ### Still NOT verified (unchanged by these fixes)
 Real SQL Server / Azure SQL execution · any Databricks workspace (Key Vault scope, Unity Catalog, drivers, job template, Delta behaviour on the runtime) · Azure DevOps pipeline · scale/performance · production-sized Delta conflict behaviour (each batch makes ~25 small audit commits). Nothing is `PRODUCTION_READY`.
 
-### Final recommendation
-**M2 can be closed as `LOCAL_VERIFIED` for the defined scope, with SQL Server and Databricks validation explicitly PENDING, and M3 may start once you approve closure.** Mandatory pre-M3 items (A1–A5, B1–B5) are done and tested. Items deferred by your decision (B6–B12) are tracked in `docs/status/KNOWN_LIMITATIONS.md`; none blocks M3. Recommended soon after (not blocking): run the SQL Server container test on a Docker-capable machine and a first Databricks smoke run, because both can still reveal environment-specific issues.
+### Final recommendation (accepted — M2 closed)
+**M2 closed as `LOCAL_VERIFIED` for the defined scope, with SQL Server and Databricks validation explicitly PENDING.** Mandatory pre-M3 items (A1–A5, B1–B5) are done and tested. Items deferred by your decision (B6–B12) are tracked in `docs/status/KNOWN_LIMITATIONS.md`; none blocks M3. Recommended soon after (not blocking): run the SQL Server container test on a Docker-capable machine and a first Databricks smoke run, because both can still reveal environment-specific issues.
 
 ---
 # Original review (as found, before the fixes)

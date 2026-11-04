@@ -55,3 +55,5 @@ Full detail, evidence and fix plan: `docs/architecture/m2/07_M2_closure_review.m
 - B12 lease renewal result ignored / no heartbeat (30-min TTL; correctness protected by idempotent writes), connector contract-test suite, stale `DDL_ONLY` table comments, history-scan cost in `verify()`, connectors never closed, 10 of 15 designed crash points, case-sensitive `cast_to_table`.
 - No local-CLI way to add JDBC driver jars (`flavor: LOCAL` starts a plain Spark session).
 - Not implemented (planned M2.2/M2.3/M2.4 increments): discovery and metadata auto-generation, CSV/JSON/Parquet, REST, CDC and deletes, backfill chunking, source-count reconciliation.
+
+**M2 is closed as LOCAL_VERIFIED (2026-11-04).** Every item above under "Still pending external validation" and "Deferred by decision" remains open and is not covered by the closure.
