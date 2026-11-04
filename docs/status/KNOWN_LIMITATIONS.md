@@ -58,7 +58,7 @@ Full detail, evidence and fix plan: `docs/architecture/m2/07_M2_closure_review.m
 
 **M2 is closed as LOCAL_VERIFIED (2026-11-04).** Every item above under "Still pending external validation" and "Deferred by decision" remains open and is not covered by the closure.
 
-## M3 (transformation) — approved limitations (2026-11-04; implementation in progress, nothing verified yet)
+## M3 (transformation) — limitations (approved 2026-11-04; implementation LOCAL_VERIFIED)
 - **Delete-by-absence is deferred to M4**: deletes reach Silver only from Bronze `_op_type='D'` rows, and no implemented connector produces them (CDC is future). Source deletes from JDBC sources are **not** reflected in Silver. Reason: extract completeness cannot be proven (no consistent-snapshot control in M2, partitioned reads only tested on static data, hidden source filters undetectable).
 - Rejects are pointers `(src_batch_id, _row_hash)`; `_row_hash` is M2's 64-bit un-keyed hash, **not** a privacy guarantee: reject tables are restricted pseudonymous data (access, retention and erasure are external/future controls).
 - Operator action is limited to `transform-replan`; the actor name is unauthenticated (like M2 `abandon-batch` and M1 `--approved-by`). No data-skip or approval workflow (M4).
@@ -66,3 +66,11 @@ Full detail, evidence and fix plan: `docs/architecture/m2/07_M2_closure_review.m
 - Temporary duplication of M2 retry/runner logic inside M3 (≈65 lines), consolidation tracked as `M4-CONSOLIDATE-01`.
 - Gold SQL/PySpark are code, not metadata: integrity = checksum + path safety; the keyword tokenizer is defence in depth. Metadata-table write restrictions, branch policy and job-principal grants are external controls and not validated.
 - All M3 behaviour is local-only evidence; Databricks/Unity Catalog, Azure DevOps, real SQL Server and scale remain `DATABRICKS_INTEGRATION_PENDING`.
+
+## M3 implementation findings (2026-11-04/05, local Delta 3.2.1 / Spark 3.5.9)
+- **Delta overwrite APIs do not work on this local Delta/Spark pair**: `saveAsTable(mode=overwrite)`, `writeTo().createOrReplace()` and `CREATE OR REPLACE TABLE ... AS SELECT` all fail with "does not support truncate in batch mode". Gold FULL therefore replaces a table with ONE atomic MERGE (`ON 1 = 0`, insert all, delete not-matched-by-source). Behaviour on the Databricks runtime is unverified (`DATABRICKS_INTEGRATION_PENDING`).
+- **Delta invalidates and lazily recomputes cached plans that read a table it just wrote.** Any decision frame that reads the target (SCD2) is frozen with `localCheckpoint` before the merge; otherwise post-merge verification would be vacuous. Covered by negative tests that corrupt the target after the merge.
+- A crashed runner keeps its lease until the 30-minute TTL (same as M2): a recovery run started earlier gets `BUSY`. The crash matrix advances the clock past the TTL.
+- Gold re-runs when Silver commits only non-data changes (OPTIMIZE/VACUUM/ADD COLUMN) and after Bronze overlap re-deliveries that change nothing (safe direction).
+- Local test runs need a larger Spark driver heap for the wide SCD2/Gold plans (`tests/component/conftest.py` sets 4 GB); plan size is also kept down by materialising intermediate results.
+- Delta audit-store tests cost about a minute per unit; the full suite takes well over an hour.

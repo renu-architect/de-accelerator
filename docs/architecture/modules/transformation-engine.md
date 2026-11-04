@@ -1,6 +1,6 @@
 # Module spec — transformation engine (M3: Bronze → Silver → Gold)
 
-**Status: implementation in progress on branch `m3-design` (see `docs/status/IMPLEMENTATION_STATUS.md` for what is verified).** Design: `docs/architecture/m3/00_M3_design.md`; decisions: `02_M3_decisions_and_estimate.md`; ADR-0020.
+**Status: implemented and `LOCAL_VERIFIED` on branch `m3-design` (evidence: `docs/status/TEST_EVIDENCE.md`); Databricks/Unity Catalog validation pending.** Design: `docs/architecture/m3/00_M3_design.md`; decisions: `02_M3_decisions_and_estimate.md`; ADR-0020.
 
 ## Public surface
 | Module | Responsibility |
