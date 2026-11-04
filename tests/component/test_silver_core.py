@@ -156,7 +156,7 @@ def test_effective_time_ordering_guard_and_dedupe_within_a_unit(w):
 
 # ---- rejects + privacy --------------------------------------------------------------------------------------------------------
 def test_rejects_are_pointers_only_and_reconcile(w):
-    w.seed("rej", [r(1, "ok", "10"), {"Id": None, "Name": "nokey", "Amount": "1", "Modified": D}, r(3, "badamt", "abc"),
+    w.seed("rej", [r(1, "ok", "10"), {"Id": None, "Name": "nokey", "Amount": "1", "Modified": D}, r(3, "badamt", "zzq-nan"),
                    r(4, "baddate", "1", "not-a-date")])  # fmt: skip
     res = w.run("rej")
     assert res.status == "DONE" and (res.rows_in, res.rows_applied, res.rows_rejected) == (4, 1, 3)
@@ -172,7 +172,7 @@ def test_rejects_are_pointers_only_and_reconcile(w):
     assert counters["rows_in"] == counters["rows_applied"] + counters["rows_deduped"] + counters["rows_rejected"]
     # canary: no business value or key anywhere in rejects, events, run errors
     blob = repr(rej) + repr(w.store.select("run_batch_event")) + repr(w.store.select("run_error"))
-    for canary in ("nokey", "badamt", "baddate", "not-a-date", "abc"):
+    for canary in ("nokey", "badamt", "baddate", "not-a-date", "zzq-nan"):
         assert canary not in blob
 
 

@@ -175,15 +175,28 @@ def build_staged(plan: SilverPlan, bronze: DataFrame, ctx: BuildContext) -> Stag
                        F.col("_batch_seq").cast("bigint").alias("_src_batch_seq"), F.col("_batch_id").alias("_src_batch_id"),
                        F.col("_op_seq"), F.col("_ingest_ts"), F.col("_row_hash"))  # fmt: skip
     tcols = [s.target for s in specs]
-    base = base.withColumn("_content_hash", content_hash(tcols))
+    base = base.withColumn("_carried", F.lit(False))
     if ctx.dedupe:
         key_cols = [plan.target_of(k) for k in plan.business_keys]
         order = [(F.col(plan.target_of(c)).desc() if d else F.col(plan.target_of(c)).asc()) for c, d in plan.dedupe_order]
         order += [F.col("_effective_ts").desc(), F.col("_src_batch_seq").desc(), F.col("_op_seq").desc_nulls_last(),
                   F.col("_ingest_ts").desc(), F.col("_row_hash").desc()]  # fmt: skip
+        if plan.delete_mode == "soft":
+            # A delete that wins inside the unit keeps the last values of the key seen earlier in the SAME unit, so the result does not
+            # depend on where unit boundaries fall (the same events in two units give a soft-deleted row with the last values).
+            order_asc = [(F.col(plan.target_of(c)).asc() if d else F.col(plan.target_of(c)).desc()) for c, d in plan.dedupe_order]
+            order_asc += [F.col("_effective_ts").asc(), F.col("_src_batch_seq").asc(), F.col("_op_seq").asc_nulls_first(),
+                          F.col("_ingest_ts").asc(), F.col("_row_hash").asc()]  # fmt: skip
+            wv = Window.partitionBy(*key_cols).orderBy(*order_asc).rowsBetween(Window.unboundedPreceding, Window.currentRow)
+            for tc in tcols:
+                if tc not in key_cols:
+                    base = base.withColumn(tc, F.when(F.col("_op") == "D", F.last(F.when(F.col("_op") == "U", F.col(tc)), True).over(wv))
+                                           .otherwise(F.col(tc)))  # fmt: skip
+            base = base.withColumn("_carried", (F.col("_op") == "D") & (F.count(F.when(F.col("_op") == "U", 1)).over(wv) > 0))
         w = Window.partitionBy(*key_cols).orderBy(*order)
         base = base.withColumn("__rn", F.row_number().over(w)).where(F.col("__rn") == 1).drop("__rn")
-    out = base.select(*tcols, *TECH, "_op_seq", "_ingest_ts", "_row_hash").persist(StorageLevel.MEMORY_AND_DISK)
+    base = base.withColumn("_content_hash", content_hash(tcols))
+    out = base.select(*tcols, *TECH, "_carried", "_op_seq", "_ingest_ts", "_row_hash").persist(StorageLevel.MEMORY_AND_DISK)
     counters["rows_applied"] = out.count()
     counters["rows_deduped"] = counters["rows_in"] - counters["rows_rejected"] - counters["rows_applied"]
     return Staged(out, rej, tuple(specs), counters, df)

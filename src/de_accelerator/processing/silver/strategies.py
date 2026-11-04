@@ -22,7 +22,7 @@ from de_accelerator.processing.common.names import q
 #: technical columns present in every Silver table (SCD2 adds more in processing/silver/scd2.py)
 SILVER_TECH = ("_content_hash", "_effective_ts", "_src_batch_seq", "_src_batch_id", "_silver_batch_id", "_silver_ts",
                "_config_snapshot_id", "_is_deleted", "_deleted_ts")  # fmt: skip
-STAGING_ONLY = ("_op", "_op_seq", "_ingest_ts", "_row_hash")
+STAGING_ONLY = ("_op", "_carried", "_op_seq", "_ingest_ts", "_row_hash")
 
 
 @dataclass(frozen=True)
@@ -136,6 +136,8 @@ def apply_scd1(spark: SparkSession, ctx: WriteContext, staged_final: DataFrame, 
         f"WHEN MATCHED AND s._op = 'U' AND {_newer()} AND (t._content_hash <> s._content_hash OR t._is_deleted) THEN UPDATE SET {set_all}"
     )
     clauses.append(f"WHEN NOT MATCHED AND s._op = 'U' THEN INSERT ({ins_cols}) VALUES ({ins_vals})")
+    if plan.delete_mode != "hard":  # a key inserted and deleted inside one unit becomes a soft-deleted row (same as across two units)
+        clauses.append(f"WHEN NOT MATCHED AND s._op = 'D' AND s._carried THEN INSERT ({ins_cols}) VALUES ({ins_vals})")
     try:
         spark.sql(f"MERGE INTO {ctx.fq} t USING {view} s ON {on} " + " ".join(clauses))
     finally:
@@ -154,18 +156,16 @@ def verify_scd1(spark: SparkSession, ctx: WriteContext, staged_final: DataFrame,
     t_newer = (F.col("t._effective_ts") > F.col("s._effective_ts")) | (
         (F.col("t._effective_ts") == F.col("s._effective_ts")) & (F.col("t._src_batch_seq") > F.col("s._src_batch_seq"))
     )
-    same = ((F.col("t._content_hash") == F.col("s._content_hash")) & (F.col("t._effective_ts") == F.col("s._effective_ts"))
-            & (F.col("t._src_batch_seq") == F.col("s._src_batch_seq")))  # fmt: skip
+    # identical content is what matters: an unchanged row re-delivered by a later Bronze batch (incremental overlap, full reloads) is
+    # correctly NOT rewritten by the merge, so the target keeps the earlier batch sequence / effective time
+    same = F.col("t._content_hash") == F.col("s._content_hash")
     present = F.col(f"t.{q(keys[0])}").isNotNull()
     upsert_ok = (F.col("s._op") == "U") & present & ((same & ~F.col("t._is_deleted")) | t_newer)
     if plan.delete_mode == "hard":
         delete_ok = (F.col("s._op") == "D") & (~present | t_newer)
     else:
-        delete_ok = (
-            (F.col("s._op") == "D")
-            & present
-            & ((F.col("t._is_deleted") & (F.col("t._effective_ts") == F.col("s._effective_ts"))) | t_newer)
-        )
+        # a delete of an already-deleted key is a no-op for the merge (the earlier tombstone stays), so deleted-or-superseded is the proof
+        delete_ok = (F.col("s._op") == "D") & ((present & (F.col("t._is_deleted") | t_newer)) | (~present & ~F.col("s._carried")))
     bad = j.where(~(upsert_ok | delete_ok)).count()
     dup = (
         spark.table(ctx.fq)
