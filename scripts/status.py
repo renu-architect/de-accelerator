@@ -30,7 +30,7 @@ ROWS = [
     ("M2 schema discovery + metadata auto-generation", "NOT IMPLEMENTED", "—", "—", "deferred"),
     ("M2 CSV / JSON / Parquet, REST, CDC + deletes, late-arrival beyond lookback, source-count reconciliation, backfill chunking", "NOT IMPLEMENTED", "—", "—", "deferred; rejected/absent in the validator"),
     ("`docs` schema + `docs.*` tables (ADR-0018 #6)", "PLANNED (future; not implemented by decision)", "—", "—", "Code stays at 8 schemas"),
-    ("**M3** transformation engine: Bronze->Silver (cleansing, dedupe, keys, SCD1/SCD2, independent layer cursors) and Silver->Gold", "DESIGN PROPOSED (docs/architecture/m3, ADR-0020) — awaiting approval", "—", "—", "no M3 code exists"),
+    ("**M3** transformation engine: Bronze->Silver (cleansing, dedupe, keys, SCD1/SCD2, independent layer cursors) and Silver->Gold", "DESIGN PROPOSED (branch m3-design, ADR-0020) — awaiting approval", "—", "—", "no M3 code exists"),
     ("remaining: quality, reconciliation, orchestration planner, semantic, documents, monitoring, security, IaC", "DESIGNED", "—", "—", "not started"),
 ]
 if __name__ == "__main__":
