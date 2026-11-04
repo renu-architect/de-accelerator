@@ -1,0 +1,6 @@
+kind: execution
+items:
+  - code: daily_all
+    scope: {objects: [customers, orders, fact_sales, dim_customer]}
+    concurrency: 4
+    retry_policy: standard

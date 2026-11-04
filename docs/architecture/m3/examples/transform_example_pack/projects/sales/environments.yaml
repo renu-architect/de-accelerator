@@ -1,0 +1,5 @@
+kind: environment
+items:
+- code: DEV
+  catalog_name: acme_dev
+  secret_scope: kv-acme-dev

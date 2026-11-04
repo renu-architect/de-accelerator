@@ -1,0 +1,10 @@
+pack_format: 1
+pack_name: transform-example
+pack_version: 1.0.0
+requires_core: '>=0.1.0.dev0,<1.0'
+metadata_schema_version: 2
+client:
+  code: acme
+  name: Acme Retail (synthetic)
+environments:
+- DEV

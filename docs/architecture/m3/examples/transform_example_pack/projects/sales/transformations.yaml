@@ -1,0 +1,17 @@
+kind: transformation
+items:
+  # Gold fact: SQL with logical placeholders; only the CHANGED Silver orders are recomputed (Delta change feed), joined to current customers
+  - object: fact_sales
+    layer: GOLD
+    step_no: 1
+    type: SQL
+    body_ref: transform_files/gold/fact_sales.sql
+    input_objects: [orders, customers]
+    params: {incremental: {driver: orders, key: [order_id]}}
+  # Gold dimension: full refresh of the current customer rows (PySpark function from a reviewed file)
+  - object: dim_customer
+    layer: GOLD
+    step_no: 1
+    type: PYSPARK
+    body_ref: transform_files/gold/dim_customer.py
+    input_objects: [customers]

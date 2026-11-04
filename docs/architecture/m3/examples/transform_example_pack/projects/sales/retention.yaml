@@ -1,0 +1,2 @@
+kind: retention_policy
+items: [{code: customers_ret, scope_kind: OBJECT, object: customers, retain_days: 2555, basis: business}]

@@ -1,0 +1,4 @@
+kind: load_strategy
+items:
+  - {object: customers, load_type: FULL, is_complete_extract: true}
+  - {object: orders, load_type: INCREMENTAL, watermark_column: ModifiedDate, watermark_type: timestamp, lookback_window: PT1H}

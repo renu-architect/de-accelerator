@@ -1,0 +1,17 @@
+kind: column
+items:
+  # ---- customers (Silver, SCD2) -------------------------------------------------------------------------------------------------
+  - {object: customers, name: CustomerID, ordinal: 1, source_type: int,     target_type: bigint, is_pk: true, is_bk: true, is_nullable: false,
+     target_name: customer_id}                                    # NEW: rename on the way to Silver
+  - {object: customers, name: Email,      ordinal: 2, source_type: varchar, target_type: string, is_pii: true, classification: confidential, mask_policy: email_mask,
+     target_name: email, cleanse_rules: {ops: [{op: trim}, {op: lower}, {op: nullif, values: [""]}]}}
+  - {object: customers, name: Country,    ordinal: 3, source_type: varchar, target_type: string, target_name: country,
+     cleanse_rules: {ops: [{op: trim}, {op: upper}, {op: map_values, map: {UK: GB, "UNITED KINGDOM": GB}}, {op: default, value: UNKNOWN}]}}
+  - {object: customers, name: ModifiedDate, ordinal: 4, source_type: datetime, target_type: timestamp, target_name: modified_ts}
+  # ---- orders (Silver, SCD1) ----------------------------------------------------------------------------------------------------
+  - {object: orders, name: OrderID,    ordinal: 1, source_type: int,      target_type: bigint,        is_pk: true, is_bk: true, is_nullable: false, target_name: order_id}
+  - {object: orders, name: CustomerID, ordinal: 2, source_type: int,      target_type: bigint,        target_name: customer_id, fk_object: customers, fk_column: CustomerID}
+  - {object: orders, name: Amount,     ordinal: 3, source_type: varchar,  target_type: "decimal(18,2)", target_name: amount, cleanse_rules: {ops: [{op: trim}, {op: replace, from: ",", to: ""}]}}
+  - {object: orders, name: OrderDate,  ordinal: 4, source_type: varchar,  target_type: date,          target_name: order_date, cleanse_rules: {ops: [{op: parse_date, format: "yyyy-MM-dd"}]}}
+  - {object: orders, name: ModifiedDate, ordinal: 5, source_type: datetime, target_type: timestamp, target_name: modified_ts}
+  - {object: orders, name: amount_eur, ordinal: 6, target_type: "decimal(18,2)", target_name: amount_eur, expression: "amount * 0.86"}   # NEW: derived column

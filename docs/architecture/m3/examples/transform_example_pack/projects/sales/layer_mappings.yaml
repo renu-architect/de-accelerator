@@ -1,0 +1,28 @@
+kind: layer_mapping
+items:
+  - {object: customers, layer: BRONZE, target_table: bronze.erp_customers, merge_type: APPEND}
+  - {object: orders,    layer: BRONZE, target_table: bronze.erp_orders,    merge_type: APPEND}
+  # Silver: SCD Type 2 dimension source (history kept), latest row per key wins inside a batch
+  - object: customers
+    layer: SILVER
+    target_table: silver.customers
+    merge_type: SCD2
+    scd_columns: [email, country]                 # tracked attributes (target_name), a change opens a new version
+    dedupe_keys: [CustomerID]
+    dedupe_order: "ModifiedDate desc"
+    effective_column: ModifiedDate                # NEW: valid_from of a version (default _ingest_ts)
+    on_cast_error: REJECT                         # NEW: NULL | REJECT | FAIL
+    late_arrival_policy: FAIL                     # NEW: FAIL | REJECT (an older version arriving after a newer one)
+    max_batches_per_unit: 50                      # NEW: catch-up size per Silver commit
+  # Silver: SCD Type 1 (latest state), incremental from the Bronze cursor
+  - object: orders
+    layer: SILVER
+    target_table: silver.orders
+    merge_type: SCD1
+    dedupe_keys: [OrderID]
+    dedupe_order: "ModifiedDate desc"
+    effective_column: ModifiedDate
+    on_cast_error: REJECT
+  # Gold
+  - {object: fact_sales,    layer: GOLD, target_table: gold.fact_sales,    merge_type: MERGE, incremental_mode: CDF}
+  - {object: dim_customer,  layer: GOLD, target_table: gold.dim_customer,  merge_type: OVERWRITE, incremental_mode: FULL}

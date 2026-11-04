@@ -1,0 +1,5 @@
+kind: dependency
+items:
+  - {object: fact_sales,   depends_on: orders,    dependency_type: HARD}
+  - {object: fact_sales,   depends_on: customers, dependency_type: SOFT}
+  - {object: dim_customer, depends_on: customers, dependency_type: HARD}
